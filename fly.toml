@@ -1,0 +1,26 @@
+app = "arkade"
+primary_region = "jnb"
+
+[build]
+
+[env]
+  PORT = "3000"
+  MAX_ROOMS = "10"
+  MAX_PLAYERS = "500"
+  ROOM_IDLE_MINUTES = "120"
+  SNAPSHOT_DIR = "/data/snapshots"
+
+[mounts]
+  source = "arkade_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    path = "/healthz"
+    interval = "15s"
+    timeout = "3s"
