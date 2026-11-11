@@ -1,5 +1,5 @@
-import { JoinForm } from '@/features/lobby/Join';
+import { LandingHub } from '@/features/lobby/LandingHub';
 
 export default function Home() {
-  return <JoinForm />;
+  return <LandingHub />;
 }

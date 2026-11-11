@@ -1,0 +1,33 @@
+{
+  "id": "/mc",
+  "name": "Arkade MC · Host Console",
+  "short_name": "Arkade MC",
+  "description": "Dedicated live broadcast host controller for Arkade game nights.",
+  "start_url": "/mc?source=pwa",
+  "scope": "/mc",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B0A1A",
+  "theme_color": "#14123B",
+  "categories": ["games", "entertainment", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/mc-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/mc-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,18 +1,18 @@
 import { AVATAR_NAMES, RAINBOW } from '@/shared/types';
 
-// 24 passenger avatars on a 96 x 96 canvas. Eyes sit at the same height across the set so they read as one family.
+// 24 passenger avatars framed in an Arcade Medallion Token on a 96 x 96 canvas (< 1.7 KB each).
 type S = ['c', number, number, number, string] | ['e', number, number, number, number, string] | ['p', string, string];
 const N = '#14123B';
 const A: Record<(typeof AVATAR_NAMES)[number], { skin: string; back?: S[]; front?: S[] }> = {
   lamb: { skin: '#F4F1FF', back: [['c', 26, 40, 12, '#F4F1FF'], ['c', 70, 40, 12, '#F4F1FF'], ['c', 36, 26, 11, '#F4F1FF'], ['c', 60, 26, 11, '#F4F1FF'], ['c', 48, 22, 12, '#F4F1FF']], front: [['e', 48, 60, 11, 8, '#C9C2E8']] },
-  lion: { skin: '#FFC83D', back: [['c', 48, 52, 40, '#C98A4B']], front: [['c', 34, 30, 7, '#FFC83D'], ['c', 62, 30, 7, '#FFC83D'], ['e', 48, 62, 12, 9, '#FFD58A']] },
+  lion: { skin: '#FFC83D', back: [['c', 48, 52, 38, '#C98A4B']], front: [['c', 34, 30, 7, '#FFC83D'], ['c', 62, 30, 7, '#FFC83D'], ['e', 48, 62, 12, 9, '#FFD58A']] },
   camel: { skin: '#E0B070', back: [['e', 30, 28, 8, 12, '#E0B070'], ['e', 66, 28, 8, 12, '#E0B070']], front: [['e', 48, 64, 15, 11, '#F2D3A0']] },
   elephant: { skin: '#9AA7BD', back: [['e', 22, 50, 14, 20, '#9AA7BD'], ['e', 74, 50, 14, 20, '#9AA7BD']], front: [['p', 'M42 58 Q48 86 56 80 Q60 76 54 74 Q52 66 54 58Z', '#9AA7BD']] },
-  giraffe: { skin: '#FFD58A', back: [['e', 32, 24, 7, 11, '#FFD58A']], front: [['c', 38, 24, 4, '#C98A4B'], ['c', 58, 24, 4, '#C98A4B'], ['c', 60, 38, 5, '#C98A4B'], ['e', 48, 64, 13, 9, '#F2B866']] },
+  giraffe: { skin: '#FFD58A', back: [['e', 32, 24, 7, 11, '#FFD58A'], ['e', 64, 24, 7, 11, '#FFD58A']], front: [['c', 38, 24, 4, '#C98A4B'], ['c', 58, 24, 4, '#C98A4B'], ['e', 48, 64, 13, 9, '#F2B866']] },
   zebra: { skin: '#FFFFFF', front: [['p', 'M32 28 L40 36 M48 22 V34 M64 28 L56 36', '#14123B'], ['e', 48, 64, 12, 9, '#C9C2E8']] },
   donkey: { skin: '#A9B4C4', back: [['e', 30, 20, 7, 18, '#A9B4C4'], ['e', 66, 20, 7, 18, '#A9B4C4']], front: [['e', 48, 64, 14, 10, '#F4F1FF']] },
   ox: { skin: '#C98A4B', back: [['p', 'M22 34 Q14 22 24 18 M74 34 Q82 22 72 18', '#F4F1FF']], front: [['e', 48, 66, 14, 10, '#FFD58A'], ['c', 43, 66, 2, N], ['c', 53, 66, 2, N]] },
-  goat: { skin: '#F4F1FF', back: [['p', 'M34 30 Q28 12 38 10 M62 30 Q68 12 58 10', '#C98A4B']], front: [['p', 'M42 74 L48 90 L54 74Z', '#F4F1FF']] },
+  goat: { skin: '#F4F1FF', back: [['p', 'M34 30 Q28 12 38 10 M62 30 Q68 12 58 10', '#C98A4B']], front: [['p', 'M42 74 L48 88 L54 74Z', '#F4F1FF']] },
   ram: { skin: '#E8D3B0', back: [['c', 22, 44, 14, '#C98A4B'], ['c', 74, 44, 14, '#C98A4B']], front: [['e', 48, 64, 12, 9, '#F4F1FF']] },
   bear: { skin: '#A9692F', back: [['c', 28, 28, 10, '#A9692F'], ['c', 68, 28, 10, '#A9692F']], front: [['e', 48, 64, 13, 10, '#D9A066']] },
   deer: { skin: '#D9A066', back: [['p', 'M32 26 L24 8 M32 18 L22 16 M64 26 L72 8 M64 18 L74 16', '#C98A4B']], front: [['e', 48, 64, 12, 9, '#F2D3A0']] },
@@ -36,32 +36,36 @@ function Shapes({ s }: { s?: S[] }) {
       {s?.map((x, i) =>
         x[0] === 'c' ? <circle key={i} cx={x[1]} cy={x[2]} r={x[3]} fill={x[4]} stroke={N} strokeWidth={4} />
         : x[0] === 'e' ? <ellipse key={i} cx={x[1]} cy={x[2]} rx={x[3]} ry={x[4]} fill={x[5]} stroke={N} strokeWidth={4} />
-        : <path key={i} d={x[1]} fill={x[2] === N ? 'none' : x[2]} stroke={x[2] === N ? N : N} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />,
+        : <path key={i} d={x[1]} fill={x[2] === N ? 'none' : x[2]} stroke={N} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />,
       )}
     </>
   );
 }
 
-/** Circular passenger avatar on the player's rainbow colour. */
+/** Circular passenger avatar framed as an arcade medallion token. */
 export function Avatar({ avatar, color, size = 48, label }: { avatar: number; color: number; size?: number; label?: string }) {
   const a = A[AVATAR_NAMES[((avatar % 24) + 24) % 24]];
+  const bg = RAINBOW[((color % 6) + 6) % 6];
   const id = `av${avatar}-${color}`;
   return (
     <svg width={size} height={size} viewBox="0 0 96 96" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} style={{ flex: 'none' }}>
-      <defs><clipPath id={id}><circle cx="48" cy="48" r="48" /></clipPath></defs>
+      <defs><clipPath id={id}><circle cx="48" cy="48" r="44" /></clipPath></defs>
+      <circle cx="48" cy="48" r="46" fill={N} />
       <g clipPath={`url(#${id})`}>
-        <rect width="96" height="96" fill={RAINBOW[((color % 6) + 6) % 6]} />
+        <rect width="96" height="96" fill={bg} />
+        <path d="M12 28A42 42 0 0 1 84 28" fill="none" stroke="#fff" strokeWidth="5" opacity="0.28" />
         <g transform="translate(0 6)">
           <Shapes s={a.back} />
           <circle cx="48" cy="52" r="28" fill={a.skin} stroke={N} strokeWidth={4} />
           <Shapes s={a.front} />
           <circle cx="38" cy="46" r="5" fill={N} />
           <circle cx="58" cy="46" r="5" fill={N} />
-          <circle cx="39.6" cy="44.4" r="1.6" fill="#fff" />
-          <circle cx="59.6" cy="44.4" r="1.6" fill="#fff" />
+          <circle cx="39.6" cy="44.4" r="1.7" fill="#fff" />
+          <circle cx="59.6" cy="44.4" r="1.7" fill="#fff" />
           <ellipse cx="48" cy="57" rx="3.4" ry="2.4" fill={N} />
         </g>
       </g>
+      <circle cx="48" cy="48" r="44" fill="none" stroke={N} strokeWidth="4" />
     </svg>
   );
 }

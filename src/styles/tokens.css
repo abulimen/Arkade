@@ -1,14 +1,33 @@
-/* Arkade design tokens (DESIGN.md section 13). */
+/* Arkade design tokens — Warm Arcade Showtime (DESIGN.md). */
 :root {
-  --night: #14123b; --night-2: #1e1b55; --night-3: #2a2670;
-  --cloud: #f4f1ff; --white: #ffffff;
-  --ark-gold: #ffc83d; --plank: #c98a4b; --plank-dark: #a9692f;
-  --coral: #ff5c6c; --tangerine: #ff9a3d; --lemon: #ffe14d; --leaf: #3dd68c; --sky: #3db8ff; --indigo: #6c5ce7; --violet: #b15cff;
-  --success: #2ed573; --warning: #ffa502; --danger: #ff4757;
-  --radius-sm: 12px; --radius-md: 20px; --radius-lg: 28px;
-  --shadow-chunky: 0 8px 0 rgba(0, 0, 0, 0.25);
-  --dur-fast: 120ms; --dur-base: 220ms; --dur-slow: 400ms;
-  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --bg-abyss: #0b0a1a;
+  --night: #14123b;
+  --night-2: #1e1b55;
+  --night-3: #2a2670;
+  --cloud: #f4f1ff;
+  --white: #ffffff;
+  --ark-gold: #ffc83d;
+  --plank: #c98a4b;
+  --plank-dark: #a9692f;
+  --coral: #ff5c6c;
+  --tangerine: #ff9a3d;
+  --lemon: #ffe14d;
+  --leaf: #3dd68c;
+  --sky: #3db8ff;
+  --indigo: #6c5ce7;
+  --violet: #b15cff;
+  --success: #2ed573;
+  --warning: #ffa502;
+  --danger: #ff4757;
+  --radius-sm: 14px;
+  --radius-md: 22px;
+  --radius-lg: 28px;
+  --shadow-chunky: 0 6px 0 rgba(7, 5, 20, 0.72), inset 0 2px 0 rgba(255, 255, 255, 0.28);
+  --shadow-card: 0 18px 42px -12px rgba(5, 4, 18, 0.75), 0 6px 0 rgba(8, 6, 24, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 380ms;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --font-display: "Fredoka", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-verse: "Source Serif 4", Georgia, serif;
 }

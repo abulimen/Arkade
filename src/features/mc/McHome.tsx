@@ -5,22 +5,84 @@ import { useRouter } from 'next/navigation';
 import { DEFAULT_CONFIG, GAME_IDS, GAME_META } from '@/shared/types';
 import type { Audience, GameConfig, GameId } from '@/shared/types';
 import { t } from '@/i18n';
-import { Button, Wordmark } from '@/ui/kit';
+import { Icon } from '@/ui/icons';
+import { Button } from '@/ui/kit';
 import { MascotView } from '@/ui/mascots';
+import { AppShell } from '@/ui/shell';
 
 function Chips<T extends string | number>({ label, value, options, onChange }: { label: string; value: T; options: { v: T; l: string }[]; onChange: (v: T) => void }) {
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="fs-body font-semibold">{label}</legend>
+      <legend className="fs-body font-semibold text-cloud">{label}</legend>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={label}>
-        {options.map((o) => (
-          <button key={String(o.v)} type="button" role="radio" aria-checked={value === o.v} onClick={() => onChange(o.v)}
-            className={`min-h-12 rounded-xl border-[3px] px-4 fs-body font-semibold ${value === o.v ? 'border-white bg-gold text-night' : 'border-night bg-night-3 text-cloud'}`}>
-            {value === o.v ? '✓ ' : ''}{o.l}
-          </button>
-        ))}
+        {options.map((o) => {
+          const active = value === o.v;
+          return (
+            <button
+              key={String(o.v)}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(o.v)}
+              className={`cursor-pointer min-h-12 rounded-xl border-[3px] px-4 fs-body font-semibold transition ${
+                active
+                  ? 'border-night bg-gold text-night shadow-[0_3px_0_#0B0A1A]'
+                  : 'border-white/15 bg-night-3/80 text-cloud hover:border-white/30'
+              }`}
+            >
+              {active ? '✓ ' : ''}{o.l}
+            </button>
+          );
+        })}
       </div>
     </fieldset>
+  );
+}
+
+function Stepper({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  suffix = '',
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="arcade-panel p-3.5 flex flex-col justify-between gap-2">
+      <span className="fs-small font-semibold text-cloud/85">{label}</span>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(min, value - step))}
+          disabled={value <= min}
+          aria-label={`Decrease ${label}`}
+          className="cursor-pointer grid h-11 w-11 place-items-center rounded-xl border-2 border-white/15 bg-night-3 text-white disabled:opacity-40"
+        >
+          <Icon n="minus" size={18} />
+        </button>
+        <span className="font-semibold text-lg text-gold tabular-nums">
+          {value}{suffix}
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(max, value + step))}
+          disabled={value >= max}
+          aria-label={`Increase ${label}`}
+          className="cursor-pointer grid h-11 w-11 place-items-center rounded-xl border-2 border-white/15 bg-night-3 text-white disabled:opacity-40"
+        >
+          <Icon n="plus" size={18} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -35,6 +97,10 @@ export default function McHome() {
   const meta = GAME_META[game];
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const q = new URLSearchParams(window.location.search).get('game') as GameId | null;
+      if (q && GAME_IDS.includes(q)) setGame(q);
+    }
     const codes = Object.keys(localStorage).filter((k) => k.startsWith('arkade:host:')).map((k) => k.slice(12));
     Promise.all(codes.map((c) => fetch(`/api/rooms/${c}`).then((r) => (r.ok ? c : null)).catch(() => null))).then((r) => setResume(r.filter(Boolean) as string[]));
   }, []);
@@ -52,45 +118,141 @@ export default function McHome() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-4 pb-10 pt-6">
-      <header className="flex items-center justify-between"><h1><Wordmark size={36} /></h1><span className="rounded-full bg-night-3 px-3 py-1 fs-small">{t('mc.badge')}</span></header>
-      <section aria-labelledby="pick"><h2 id="pick" className="fs-h2 mb-3">{t('mc.pickGame')}</h2>
-        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label={t('mc.pickGame')}>
-          {GAME_IDS.map((id) => (
-            <button key={id} type="button" role="radio" aria-checked={game === id} onClick={() => setGame(id)}
-              className={`flex items-center gap-3 rounded-3xl border-[3px] p-3 text-left ${game === id ? 'border-gold bg-night-3' : 'border-night bg-night-2'}`}>
-              <MascotView name={GAME_META[id].mascot} expression={game === id ? 'happy' : 'idle'} size={72} animate={game === id} />
-              <span className="flex flex-col"><span className="fs-h2">{game === id ? '✓ ' : ''}{GAME_META[id].name}</span><span className="fs-small text-cloud">{GAME_META[id].tagline}</span><span className="fs-small text-gold">{t('mc.minutes', { a: GAME_META[id].est[0], b: GAME_META[id].est[1] })} · {t('mc.minPlayers', { n: GAME_META[id].minPlayers })}</span></span>
-            </button>
-          ))}
-        </div>
-      </section>
-      <section className="flex flex-col gap-4 rounded-3xl bg-night-2 p-4" aria-label={t('mc.settings')}>
-        <Chips<Audience> label={t('mc.audience')} value={cfg.audience} onChange={(v) => set('audience', v)} options={[{ v: 'kids', l: t('mc.kids') }, { v: 'youth', l: t('mc.youth') }, { v: 'adults', l: t('mc.adults') }]} />
-        <Chips<GameConfig['difficulty']> label={t('mc.difficulty')} value={cfg.difficulty} onChange={(v) => set('difficulty', v)} options={[{ v: 'mixed', l: t('mc.mixed') }, { v: 'easy', l: t('mc.easy') }, { v: 'medium', l: t('mc.medium') }, { v: 'hard', l: t('mc.hard') }]} />
-        {meta.modes.length > 1 && <Chips<GameConfig['mode']> label={t('mc.mode')} value={cfg.mode} onChange={(v) => set('mode', v)} options={[{ v: 'individual', l: t('mc.individual') }, { v: 'team', l: t('mc.team') }]} />}
-        <Chips<GameConfig['pace']> label={t('mc.pace')} value={cfg.pace} onChange={(v) => set('pace', v)} options={[{ v: 0.75, l: t('mc.relaxed') }, { v: 1, l: t('mc.normal') }, { v: 1.5, l: t('mc.fast') }]} />
-        {game === 'gideons-300' && (
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="flex flex-col gap-1 fs-body">{t('mc.keep1', { n: Math.round(cfg.keep1 * 100) })}<input type="range" min={40} max={100} value={Math.round(cfg.keep1 * 100)} onChange={(e) => set('keep1', Number(e.target.value) / 100)} className="min-h-12" /></label>
-            <label className="flex flex-col gap-1 fs-body">{t('mc.keep2', { n: Math.round(cfg.keep2 * 100) })}<input type="range" min={10} max={60} value={Math.round(cfg.keep2 * 100)} onChange={(e) => set('keep2', Number(e.target.value) / 100)} className="min-h-12" /></label>
-            <label className="flex flex-col gap-1 fs-body">{t('mc.finalists', { n: cfg.finalists })}<input type="range" min={2} max={20} value={cfg.finalists} onChange={(e) => set('finalists', Number(e.target.value))} className="min-h-12" /></label>
+    <AppShell
+      active="mc"
+      maxWidth="max-w-4xl"
+      rightSlot={
+        <span className="rounded-full border border-coral/40 bg-coral/15 px-3 py-1 text-xs font-semibold text-coral">
+          {t('mc.badge')}
+        </span>
+      }
+    >
+      <div className="flex flex-col gap-6 pb-8">
+        {resume.length > 0 && (
+          <section aria-label={t('mc.resume')} className="arcade-card p-4 border-gold/40 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-leaf animate-pulse" />
+              <h2 className="fs-body font-semibold text-white">{t('mc.resume')}</h2>
+            </div>
+            <ul className="flex flex-wrap gap-2">
+              {resume.map((c) => (
+                <li key={c}>
+                  <Link
+                    className="cursor-pointer inline-flex min-h-11 items-center gap-2 rounded-xl bg-gold px-4 fs-small font-semibold text-night shadow-[0_3px_0_#9A6B00]"
+                    href={`/mc/${c}`}
+                  >
+                    <Icon n="play" size={14} />
+                    <span>{c}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section aria-labelledby="pick">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h1 id="pick" className="fs-h1 text-white">{t('mc.pickGame')}</h1>
+            <span className="text-xs font-semibold uppercase tracking-wider text-gold">Step 1 of 2</span>
           </div>
-        )}
-        {game === 'spot-the-wolf' && (
-          <>
-            <Chips<number> label={t('mc.wolves')} value={cfg.wolves ?? 0} onChange={(v) => set('wolves', v === 0 ? null : v)} options={[{ v: 0, l: t('mc.auto') }, { v: 1, l: '1' }, { v: 2, l: '2' }, { v: 3, l: '3' }]} />
-            <label className="flex min-h-12 items-center gap-3 fs-body"><input type="checkbox" className="h-6 w-6" checked={cfg.lookalike} onChange={(e) => set('lookalike', e.target.checked)} />{t('mc.lookalike')}</label>
-          </>
-        )}
-      </section>
-      {err && <p role="alert" className="rounded-xl bg-coral px-3 py-2 fs-body text-night">{err}</p>}
-      <Button onClick={create} loading={busy}>{t('mc.create')}</Button>
-      {resume.length > 0 && (
-        <section aria-label={t('mc.resume')} className="rounded-3xl bg-night-2 p-4"><h2 className="fs-h2 mb-2">{t('mc.resume')}</h2>
-          <ul className="flex flex-wrap gap-2">{resume.map((c) => <li key={c}><Link className="inline-flex min-h-12 items-center rounded-xl bg-night-3 px-4 fs-body font-semibold underline" href={`/mc/${c}`}>{c}</Link></li>)}</ul>
+          <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label={t('mc.pickGame')}>
+            {GAME_IDS.map((id) => {
+              const selected = game === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setGame(id)}
+                  className={`cursor-pointer flex items-center gap-3.5 rounded-3xl border-[3px] p-4 text-left transition ${
+                    selected
+                      ? 'border-gold bg-night-3 shadow-[0_5px_0_#0B0A1A]'
+                      : 'border-white/10 bg-night-2/80 hover:border-white/25'
+                  }`}
+                >
+                  <MascotView name={GAME_META[id].mascot} expression={selected ? 'cheer' : 'happy'} size={76} animate={selected} />
+                  <span className="flex flex-col gap-0.5 min-w-0">
+                    <span className="fs-h2 text-white truncate">{selected ? '✓ ' : ''}{GAME_META[id].name}</span>
+                    <span className="fs-small text-cloud/80 line-clamp-1">{GAME_META[id].tagline}</span>
+                    <span className="fs-small font-semibold text-gold mt-1">
+                      {t('mc.minutes', { a: GAME_META[id].est[0], b: GAME_META[id].est[1] })} · {t('mc.minPlayers', { n: GAME_META[id].minPlayers })}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </section>
-      )}
-    </main>
+
+        <section className="arcade-card flex flex-col gap-5 p-5 sm:p-6" aria-label={t('mc.settings')}>
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <h2 className="fs-h2 text-white">{t('mc.settings')} · {meta.name}</h2>
+            <span className="text-xs font-semibold uppercase tracking-wider text-sky">Step 2 of 2</span>
+          </div>
+
+          <Chips<Audience> label={t('mc.audience')} value={cfg.audience} onChange={(v) => set('audience', v)} options={[{ v: 'kids', l: t('mc.kids') }, { v: 'youth', l: t('mc.youth') }, { v: 'adults', l: t('mc.adults') }]} />
+          <Chips<GameConfig['difficulty']> label={t('mc.difficulty')} value={cfg.difficulty} onChange={(v) => set('difficulty', v)} options={[{ v: 'mixed', l: t('mc.mixed') }, { v: 'easy', l: t('mc.easy') }, { v: 'medium', l: t('mc.medium') }, { v: 'hard', l: t('mc.hard') }]} />
+          {meta.modes.length > 1 && <Chips<GameConfig['mode']> label={t('mc.mode')} value={cfg.mode} onChange={(v) => set('mode', v)} options={[{ v: 'individual', l: t('mc.individual') }, { v: 'team', l: t('mc.team') }]} />}
+          <Chips<GameConfig['pace']> label={t('mc.pace')} value={cfg.pace} onChange={(v) => set('pace', v)} options={[{ v: 0.75, l: t('mc.relaxed') }, { v: 1, l: t('mc.normal') }, { v: 1.5, l: t('mc.fast') }]} />
+
+          {game === 'gideons-300' && (
+            <div className="grid gap-3 sm:grid-cols-3 pt-1">
+              <Stepper
+                label={t('mc.keep1', { n: Math.round(cfg.keep1 * 100) })}
+                value={Math.round(cfg.keep1 * 100)}
+                min={40}
+                max={100}
+                step={5}
+                suffix="%"
+                onChange={(v) => set('keep1', v / 100)}
+              />
+              <Stepper
+                label={t('mc.keep2', { n: Math.round(cfg.keep2 * 100) })}
+                value={Math.round(cfg.keep2 * 100)}
+                min={10}
+                max={60}
+                step={5}
+                suffix="%"
+                onChange={(v) => set('keep2', v / 100)}
+              />
+              <Stepper
+                label={t('mc.finalists', { n: cfg.finalists })}
+                value={cfg.finalists}
+                min={2}
+                max={20}
+                step={1}
+                onChange={(v) => set('finalists', v)}
+              />
+            </div>
+          )}
+
+          {game === 'spot-the-wolf' && (
+            <div className="space-y-4 pt-1">
+              <Chips<number> label={t('mc.wolves')} value={cfg.wolves ?? 0} onChange={(v) => set('wolves', v === 0 ? null : v)} options={[{ v: 0, l: t('mc.auto') }, { v: 1, l: '1' }, { v: 2, l: '2' }, { v: 3, l: '3' }]} />
+              <button
+                type="button"
+                role="switch"
+                aria-checked={cfg.lookalike}
+                onClick={() => set('lookalike', !cfg.lookalike)}
+                className="cursor-pointer arcade-panel w-full p-4 flex items-center justify-between gap-4 text-left"
+              >
+                <span className="fs-body font-semibold text-cloud">{t('mc.lookalike')}</span>
+                <span className={`inline-flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition ${cfg.lookalike ? 'bg-gold justify-end' : 'bg-night-3 justify-start'}`}>
+                  <span className="h-6 w-6 rounded-full bg-night shadow" />
+                </span>
+              </button>
+            </div>
+          )}
+        </section>
+
+        {err && <p role="alert" className="rounded-2xl bg-coral px-4 py-3 fs-body font-semibold text-night">{err}</p>}
+
+        <Button onClick={create} loading={busy}>
+          <Icon n="sparkle" size={20} />
+          {t('mc.create')}
+        </Button>
+      </div>
+    </AppShell>
   );
 }

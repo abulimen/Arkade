@@ -1,0 +1,56 @@
+{
+  "id": "/",
+  "name": "Arkade · Bible Party Games",
+  "short_name": "Arkade",
+  "description": "Real-time multiplayer Bible party games for phones, projector, and MC host console.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B0A1A",
+  "theme_color": "#14123B",
+  "categories": ["games", "entertainment", "education"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Join a Game",
+      "short_name": "Join Room",
+      "description": "Enter a 4-letter room code to join on your phone",
+      "url": "/join",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Host Console (MC)",
+      "short_name": "Host MC",
+      "description": "Create a room and control the live game",
+      "url": "/mc",
+      "icons": [{ "src": "/icons/mc-icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Projector Stage",
+      "short_name": "Projector",
+      "description": "Open the big-screen projector or TV display",
+      "url": "/screen",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
