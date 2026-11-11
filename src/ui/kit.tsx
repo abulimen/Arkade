@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import type { RankEntry } from '@/shared/types';
 import { RAINBOW } from '@/shared/types';
@@ -77,8 +77,8 @@ export function AnswerButton({ index, state = 'idle', tone, onClick, children, b
       className={`cursor-pointer press flex w-full items-center gap-3 rounded-2xl border-[3px] px-3.5 py-2 text-left font-semibold chunky ${big ? 'min-h-24' : 'min-h-14'} ${state === 'selected' || state === 'locked' ? 'border-gold ring-2 ring-white' : 'border-night'} ${state === 'disabled' ? 'opacity-50' : ''} ${dark ? 'text-night' : 'text-cloud'}`}
       style={{ background: bg }}
     >
-      <span className={`grid flex-none place-items-center rounded-full border-[2.5px] border-night bg-white text-night font-bold fs-body ${compact ? 'h-8 w-8' : 'h-9 w-9'}`} aria-hidden="true">{letter}</span>
-      {!compact && <Shape n={index} size={22} className={dark ? 'text-night' : 'text-cloud'} />}
+      <span className={`grid flex-none place-items-center rounded-full border-[2.5px] border-night bg-white text-night font-bold fs-body leading-none ${compact ? 'h-8 w-8' : big ? 'h-14 w-14' : 'h-9 w-9'}`} aria-hidden="true">{letter}</span>
+      {!compact && <Shape n={index} size={big ? 34 : 22} className={dark ? 'text-night' : 'text-cloud'} />}
       <span className="fs-body flex-1 leading-tight">{children}</span>
       {state === 'correct' && <span className="flex items-center gap-1 fs-small"><Icon n="check" size={22} />{t('state.correct')}</span>}
       {state === 'wrong' && <span className="flex items-center gap-1 fs-small"><Icon n="cross" size={22} />{t('state.wrong')}</span>}
@@ -131,13 +131,13 @@ export function Top5({ entries, meId, big }: { entries: RankEntry[]; meId?: stri
     <ol className={`flex flex-col ${big ? 'gap-3' : 'gap-2'}`} aria-label={t('score.top5')}>
       {entries.map((e, i) => (
         <li key={e.id} className="a-slide flex items-center gap-3 rounded-2xl bg-night-2/60 border border-white/10 px-3 py-2" style={{ animationDelay: `${i * 120}ms` }}>
-          <span className={`grid flex-none place-items-center rounded-full bg-gold font-semibold text-night ${big ? 'h-12 w-12 fs-body' : 'h-8 w-8 fs-small'}`}>{i + 1}</span>
-          <Avatar avatar={e.avatar} color={e.color} size={big ? 56 : 36} />
+          <span className={`grid flex-none place-items-center rounded-full bg-gold font-semibold text-night ${big ? 'h-11 w-11 fs-small' : 'h-8 w-8 fs-small'}`}>{i + 1}</span>
+          <Avatar avatar={e.avatar} color={e.color} size={big ? 52 : 36} />
           <div className="min-w-0 flex-1">
-            <div className={`truncate font-semibold ${e.id === meId ? 'text-gold' : 'text-cloud'} ${big ? 'fs-body' : 'fs-small'}`}>{e.nickname}{e.id === meId ? ` (${t('score.you')})` : ''}</div>
-            <div className={`rounded-full bg-night-3 ${big ? 'h-4' : 'h-2.5'} mt-1`}><div className="a-grow h-full rounded-full bg-leaf" style={{ width: `${(e.score / max) * 100}%`, animationDelay: `${i * 120}ms` }} /></div>
+            <div className={`truncate font-semibold ${e.id === meId ? 'text-gold' : 'text-cloud'} fs-small`}>{e.nickname}{e.id === meId ? ` (${t('score.you')})` : ''}</div>
+            <div className={`rounded-full bg-night-3 ${big ? 'h-3.5' : 'h-2.5'} mt-1`}><div className="a-grow h-full rounded-full bg-leaf" style={{ width: `${(e.score / max) * 100}%`, animationDelay: `${i * 120}ms` }} /></div>
           </div>
-          <span className={`flex items-center gap-1 font-semibold text-white tabular-nums ${big ? 'fs-body' : 'fs-small'}`}><OliveLeaf size={big ? 32 : 18} />{e.score}</span>
+          <span className={`flex shrink-0 items-center gap-1 font-semibold text-white tabular-nums fs-small`}><OliveLeaf size={big ? 28 : 18} />{e.score}</span>
         </li>
       ))}
     </ol>
@@ -221,7 +221,7 @@ export function RoomCodeCard({ code, big }: { code: string; big?: boolean }) {
   return (
     <div className="rounded-3xl border-[3px] border-night bg-plank px-6 py-3 text-center chunky shadow-[0_6px_0_#0B0A1A,inset_0_2px_0_rgba(255,255,255,0.55)]" role="group" aria-label={`${t('lobby.code')} ${code.split('').join(' ')}`}>
       <div className="font-semibold uppercase tracking-widest text-night/75 fs-small">{t('lobby.code')}</div>
-      <div className={`font-semibold tracking-[0.18em] text-night ${big ? 'text-[140px] lg:text-[185px] leading-none' : 'fs-display'}`} aria-hidden="true">{code}</div>
+      <div className={`font-semibold tracking-[0.18em] text-night ${big ? 'text-[156px] leading-none' : 'fs-display'}`} aria-hidden="true">{code}</div>
     </div>
   );
 }
@@ -278,7 +278,10 @@ export function Confetti({ active }: { active: boolean }) {
   return <canvas ref={ref} aria-hidden="true" className="pointer-events-none absolute inset-0 z-30 h-full w-full" />;
 }
 
-/* ---------- Projector stage: 1920x1080 on widescreen/preview, adaptive reflow on mobile/portrait ---------- */
+/* ---------- Projector stage: 1920x1080 on widescreen/preview, portrait phone reflow ---------- */
+const StageModeContext = createContext(false);
+export const useStageMobile = () => useContext(StageModeContext);
+
 export function Stage({ children, fit = 'window' }: { children: ReactNode; fit?: 'window' | 'parent' }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
@@ -290,7 +293,7 @@ export function Stage({ children, fit = 'window' }: { children: ReactNode; fit?:
     const measure = () => {
       const w = el.clientWidth;
       const h = el.clientHeight;
-      if (fit === 'window' && (w < 920 || w / Math.max(1, h) < 1.05)) {
+      if (fit === 'window' && w < 700 && h > w * 1.05) {
         setMobileMode(true);
       } else {
         setMobileMode(false);
@@ -314,29 +317,33 @@ export function Stage({ children, fit = 'window' }: { children: ReactNode; fit?:
 
   if (fit === 'window' && mobileMode) {
     return (
-      <div ref={wrap} className="stage-mobile min-h-dvh w-full overflow-y-auto bg-night text-cloud p-4 pb-12">
-        <div className="mx-auto max-w-2xl flex flex-col gap-4">{children}</div>
-      </div>
+      <StageModeContext.Provider value={true}>
+        <div ref={wrap} className="stage-mobile min-h-dvh w-full overflow-y-auto bg-night text-cloud p-4 pb-12">
+          <div className="mx-auto max-w-xl flex flex-col gap-5">{children}</div>
+        </div>
+      </StageModeContext.Provider>
     );
   }
 
   return (
-    <div ref={wrap} className={fit === 'window' ? 'fixed inset-0 overflow-hidden bg-night' : 'relative aspect-video w-full overflow-hidden rounded-2xl border border-white/15 bg-night'}>
-      {fit === 'window' && (
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          title="Toggle Fullscreen"
-          aria-label="Toggle Fullscreen"
-          className="cursor-pointer fixed bottom-4 right-4 z-40 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-night-2/80 px-3 py-2 text-xs font-semibold text-cloud/80 opacity-40 hover:opacity-100 transition backdrop-blur-md"
-        >
-          <Icon n="maximize" size={15} />
-          <span>Fullscreen</span>
-        </button>
-      )}
-      <div className="stage absolute left-1/2 top-1/2 origin-center overflow-hidden bg-night text-cloud" style={{ width: 1920, height: 1080, transform: `translate(-50%,-50%) scale(${scale})` }}>
-        {children}
+    <StageModeContext.Provider value={false}>
+      <div ref={wrap} className={fit === 'window' ? 'fixed inset-0 overflow-hidden bg-night' : 'relative aspect-video w-full overflow-hidden rounded-2xl border border-white/15 bg-night'}>
+        {fit === 'window' && (
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title="Toggle Fullscreen"
+            aria-label="Toggle Fullscreen"
+            className="cursor-pointer fixed bottom-4 right-4 z-40 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-night-2/80 px-3 py-2 text-xs font-semibold text-cloud/80 opacity-40 hover:opacity-100 transition backdrop-blur-md"
+          >
+            <Icon n="maximize" size={15} />
+            <span>Fullscreen</span>
+          </button>
+        )}
+        <div className="stage absolute left-1/2 top-1/2 origin-center overflow-hidden bg-night text-cloud" style={{ width: 1920, height: 1080, transform: `translate(-50%,-50%) scale(${scale})` }}>
+          {children}
+        </div>
       </div>
-    </div>
+    </StageModeContext.Provider>
   );
 }

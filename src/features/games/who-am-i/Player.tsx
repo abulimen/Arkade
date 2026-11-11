@@ -28,7 +28,7 @@ export default function WaiPlayer({ view, send }: PlayerProps) {
       {d.status === 'out' && <Feedback ok={false}>{t('wai.lockedOut')}</Feedback>}
       {d.status === 'locked' && <LockedIn />}
       {d.status === 'open' || d.chosen ? (
-        <div className="mt-auto grid grid-cols-2 gap-2" role="group" aria-label={t('wai.pick')}>
+        <div className="mt-auto grid grid-cols-1 sm:grid-cols-2 gap-2" role="group" aria-label={t('wai.pick')}>
           {opts.map((o, i) => <AnswerButton key={o} compact index={i} state={d.status === 'open' ? 'idle' : d.chosen === o ? (d.status === 'out' ? 'wrong' : 'locked') : 'disabled'} onClick={() => void send('ANSWER', { choice: o })}>{o}</AnswerButton>)}
         </div>
       ) : <Waiting game="who-am-i" title={t('common.loading')} />}

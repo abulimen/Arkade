@@ -99,24 +99,31 @@ export default function McConsole({ code }: { code: string }) {
   const players = info.players;
   const need = GAME_META[view.gameId].minPlayers;
   const label = (id: string, children: ReactNode, onClick: () => void, o: { v?: 'primary' | 'secondary' | 'danger' | 'ghost'; off?: boolean } = {}) => (
-    <Button key={id} variant={o.v ?? 'secondary'} small disabled={o.off} onClick={onClick}>{children}</Button>
+    <Button key={id} variant={o.v ?? 'secondary'} small disabled={o.off} onClick={onClick} className="!px-3 !text-sm whitespace-nowrap">{children}</Button>
   );
 
   return (
     <div className="min-h-dvh pb-24 lg:pb-8">
-      <header className="sticky top-0 z-30 glass-hud flex flex-wrap items-center gap-3 border-b border-white/15 px-4 py-3">
-        <Link href="/mc" className="cursor-pointer">
-          <Wordmark size={28} />
-        </Link>
-        <span className="rounded-full border border-coral/40 bg-coral/15 px-2.5 py-0.5 fs-small font-semibold text-coral">
-          {t('mc.badge')}
-        </span>
-        <span className="rounded-full bg-night-3 border border-white/15 px-3 py-1 fs-small font-semibold text-gold">
-          {t('mc.roomLine', { code, n: view.count.total })}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <PwaInstallButton app="mc" />
-          <ConnectionPill conn={mc.conn} />
+      <header className="sticky top-0 z-30 glass-hud border-b border-white/15 px-3 sm:px-4 py-2.5">
+        <div className="mx-auto max-w-7xl flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Link href="/mc" className="cursor-pointer shrink-0">
+              <Wordmark size={26} />
+            </Link>
+            <span className="rounded-full border border-coral/40 bg-coral/15 px-2 py-0.5 text-xs font-semibold text-coral shrink-0">
+              {t('mc.badge')}
+            </span>
+            <span className="hidden sm:inline-flex rounded-full bg-night-3 border border-white/15 px-3 py-1 fs-small font-semibold text-gold shrink-0">
+              {t('mc.roomLine', { code, n: view.count.total })}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
+            <span className="sm:hidden rounded-full bg-night-3 border border-white/15 px-2.5 py-1 text-xs font-semibold text-gold">
+              {code} · {view.count.total}
+            </span>
+            <PwaInstallButton app="mc" label="Install" />
+            <ConnectionPill conn={mc.conn} />
+          </div>
         </div>
       </header>
 
@@ -235,13 +242,13 @@ export default function McConsole({ code }: { code: string }) {
 
           {(wide || tab === 'stage' || tab === 'tools') && (
             <Card title={t('mc.share')}>
-              <div className="flex flex-wrap items-center justify-between gap-3 fs-body">
-                <div>
-                  <span className="text-cloud/80">{t('mc.joinUrl')}: </span>
-                  <span className="font-semibold text-gold">{urls?.short ?? '…'}</span>
+              <div className="flex flex-col gap-3 fs-body">
+                <div className="min-w-0 rounded-xl bg-night/60 border border-white/10 px-3.5 py-2.5 text-sm">
+                  <span className="text-cloud/75">{t('mc.joinUrl')}: </span>
+                  <span className="font-semibold text-gold break-words">{urls?.short ?? '…'}</span>
                 </div>
                 <a
-                  className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-sky/40 bg-sky/15 px-3.5 py-2 text-sm font-semibold text-sky hover:bg-sky/25"
+                  className="cursor-pointer inline-flex items-center justify-center gap-2 rounded-xl border border-sky/40 bg-sky/15 px-4 py-2.5 text-sm font-semibold text-sky hover:bg-sky/25"
                   href={`/screen/${code}`}
                   target="_blank"
                   rel="noreferrer"

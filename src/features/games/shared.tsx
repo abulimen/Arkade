@@ -36,11 +36,11 @@ export function Feedback({ ok, gain, children }: { ok: boolean; gain?: number; c
   );
 }
 
-export function Verse({ text, refText, big }: { text: string; refText: string; big?: boolean }) {
+export function Verse({ text, refText, big, compact }: { text: string; refText: string; big?: boolean; compact?: boolean }) {
   return (
-    <blockquote className={`fs-verse italic ${big ? 'max-w-[1400px]' : ''}`}>
+    <blockquote className={`fs-verse italic ${compact ? '!text-[28px] !leading-snug' : ''} ${big ? 'max-w-[1400px]' : ''}`}>
       “{text}”
-      <footer className="fs-small not-italic text-gold">{refText} · KJV</footer>
+      <footer className="fs-small not-italic text-gold mt-1">{refText} · KJV</footer>
     </blockquote>
   );
 }
@@ -48,9 +48,9 @@ export function Verse({ text, refText, big }: { text: string; refText: string; b
 /** Fenn's paper scroll for Fake Verse prompts. */
 export function ScrollCard({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`relative rounded-[28px] border-[6px] border-night bg-cloud px-12 py-8 text-night ${className}`}>
-      <span className="absolute -left-4 top-6 bottom-6 w-6 rounded-full border-[4px] border-night bg-plank" aria-hidden="true" />
-      <span className="absolute -right-4 top-6 bottom-6 w-6 rounded-full border-[4px] border-night bg-plank" aria-hidden="true" />
+    <div className={`relative mx-3 rounded-[28px] border-[5px] border-night bg-cloud px-7 py-6 text-night ${className}`}>
+      <span className="absolute -left-3 top-5 bottom-5 w-4 rounded-full border-[3px] border-night bg-plank" aria-hidden="true" />
+      <span className="absolute -right-3 top-5 bottom-5 w-4 rounded-full border-[3px] border-night bg-plank" aria-hidden="true" />
       {children}
     </div>
   );

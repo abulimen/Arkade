@@ -165,17 +165,17 @@ export function LandingHub() {
             </p>
 
             {/* Primary CTA Trio */}
-            <div className="flex flex-wrap items-center gap-3 pt-1 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 pt-1 w-full">
               <Link
                 href="/mc"
-                className="cursor-pointer press chunky inline-flex flex-1 sm:flex-initial items-center justify-center gap-2.5 rounded-2xl border-[3px] border-night bg-coral px-6 min-h-14 font-semibold fs-body text-night"
+                className="cursor-pointer press chunky inline-flex sm:flex-initial items-center justify-center gap-2.5 rounded-2xl border-[3px] border-night bg-coral px-6 min-h-14 font-semibold fs-body text-night"
               >
                 <Icon n="sparkle" size={20} />
                 <span>Host a Game (/mc)</span>
               </Link>
               <Link
                 href="/screen"
-                className="cursor-pointer press chunky inline-flex flex-1 sm:flex-initial items-center justify-center gap-2.5 rounded-2xl border-[3px] border-night bg-indigo px-5 min-h-14 font-semibold fs-body text-white"
+                className="cursor-pointer press chunky inline-flex sm:flex-initial items-center justify-center gap-2.5 rounded-2xl border-[3px] border-night bg-indigo px-5 min-h-14 font-semibold fs-body text-white"
               >
                 <Icon n="tv" size={20} />
                 <span>Open Projector Stage</span>
@@ -188,11 +188,11 @@ export function LandingHub() {
                 <span className="text-xs font-semibold uppercase tracking-wider text-gold">
                   Meet the Arkade Crew · 5 Games Included
                 </span>
-                <a href="#games" className="cursor-pointer text-xs font-semibold text-sky hover:underline">
+                <a href="#games" className="cursor-pointer text-xs font-semibold text-sky hover:underline shrink-0">
                   Explore Rules →
                 </a>
               </div>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                 {GAME_IDS.map((id) => {
                   const g = GAME_META[id];
                   const isSel = id === selectedGame;
@@ -207,8 +207,8 @@ export function LandingHub() {
                           : 'bg-night/60 border-white/10 text-cloud/75 hover:bg-white/10'
                       }`}
                     >
-                      <MascotView name={g.mascot} expression={isSel ? 'cheer' : 'happy'} size={54} />
-                      <span className="text-[11px] font-semibold text-center leading-tight line-clamp-1">
+                      <MascotView name={g.mascot} expression={isSel ? 'cheer' : 'happy'} size={48} />
+                      <span className="text-[11px] font-semibold text-center leading-tight line-clamp-1 max-w-full">
                         {g.name}
                       </span>
                     </button>

@@ -40,7 +40,7 @@ export default function WolfPlayer({ view, send }: PlayerProps) {
       <>
         <h2 className="fs-h1">{c.wolf ? t('wolf.youAre') : t('wolf.yourWord')}</h2>
         <SecretCard hint={t('wolf.hold')}>
-          {c.wolf ? (<><MascotView name="wilf" expression="sneaky" size={110} /><p className="fs-h1">{t('wolf.wolfCard')}</p><p className="fs-body">{t('wolf.category', { cat: c.category })}</p></>) : (<><p className="fs-small">{c.category}</p><p className="fs-display leading-none">{c.word}</p></>)}
+          {c.wolf ? (<><MascotView name="wilf" expression="sneaky" size={110} /><p className="fs-h1">{t('wolf.wolfCard')}</p><p className="fs-body">{t('wolf.category', { cat: c.category })}</p></>) : (<><p className="fs-small">{c.category}</p><p className="text-3xl sm:text-4xl font-semibold leading-tight break-words px-2">{c.word}</p></>)}
         </SecretCard>
         <p className="fs-body">{c.wolf ? t('wolf.wolfTip') : t('wolf.flockTip')}</p>
       </>
