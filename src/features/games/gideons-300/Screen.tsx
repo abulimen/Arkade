@@ -90,7 +90,7 @@ export default function G3Screen({ view }: ScreenProps) {
           {ph === 'end' && <h1 className={`a-pop ${mobile ? 'fs-h2' : 'fs-h1'}`}>{d.champion ? t('g3.champion', { name: d.champion.nickname }) : t('end.thanks')}</h1>}
         </div>
         {!mobile && (
-          <div className="flex w-[280px] flex-none items-end justify-center">
+          <div className="flex w-[280px] flex-none items-end justify-center pb-12">
             <MascotView name="jari" expression={cut ? 'blast' : ph.endsWith('r') ? 'cheer' : 'ready'} size={260} />
           </div>
         )}

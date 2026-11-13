@@ -207,7 +207,7 @@ export function LandingHub() {
                           : 'bg-night/60 border-white/10 text-cloud/75 hover:bg-white/10'
                       }`}
                     >
-                      <MascotView name={g.mascot} expression={isSel ? 'cheer' : 'happy'} size={48} />
+                      <MascotView name={g.mascot} expression={isSel ? 'cheer' : 'happy'} size={54} />
                       <span className="text-[11px] font-semibold text-center leading-tight line-clamp-1 max-w-full">
                         {g.name}
                       </span>
@@ -231,6 +231,36 @@ export function LandingHub() {
                 </Link>
               </div>
               <JoinForm embedded />
+            </div>
+          </div>
+        </section>
+
+        {/* Showtime Ensemble Key Art Banner */}
+        <section aria-label="Arkade Showtime Crew" className="arcade-card overflow-hidden grid grid-cols-1 lg:grid-cols-12 items-stretch">
+          <div className="lg:col-span-7 relative aspect-video lg:aspect-auto lg:min-h-[280px] bg-night overflow-hidden">
+            <img
+              src="/imgs/showdown-hero.webp"
+              alt="Captain Arky, Wilf, Fenn, Jari, Tilly, and Cami gathered on the illuminated Arkade game show stage"
+              className="w-full h-full object-cover"
+              decoding="async"
+            />
+          </div>
+          <div className="lg:col-span-5 p-6 sm:p-8 flex flex-col justify-between gap-5 bg-night-2/95 border-t lg:border-t-0 lg:border-l border-white/10">
+            <div className="space-y-3">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-gold">
+                <Icon n="sparkle" size={14} /> 5 Games · 1 Shared Stage
+              </span>
+              <h2 className="fs-h2 text-white leading-snug">
+                Showtime Energy Built for Youth Nights, Churches &amp; Families
+              </h2>
+              <p className="text-sm text-cloud/80 leading-relaxed">
+                Every character brings a distinct Bible party mode to life with live buzzer reveals, KJV verse references, and smooth phone-to-projector sync.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-cloud/85">
+              <span className="rounded-xl bg-night px-3 py-1.5 border border-white/10">Up to 300 Players</span>
+              <span className="rounded-xl bg-night px-3 py-1.5 border border-white/10">Offline LAN Ready</span>
+              <span className="rounded-xl bg-night px-3 py-1.5 border border-white/10">Zero Sign-Ups</span>
             </div>
           </div>
         </section>

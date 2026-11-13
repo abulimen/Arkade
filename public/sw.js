@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arkade-shell-v2';
+const CACHE_NAME = 'arkade-shell-v3';
 const PRECACHE_URLS = [
   '/',
   '/join',
@@ -11,6 +11,14 @@ const PRECACHE_URLS = [
   '/icons/icon-512.png',
   '/icons/mc-icon-192.png',
   '/icons/mc-icon-512.png',
+  '/mascots/arky.webp',
+  '/mascots/olive.webp',
+  '/mascots/wilf.webp',
+  '/mascots/fenn.webp',
+  '/mascots/jari.webp',
+  '/mascots/tilly.webp',
+  '/mascots/cami.webp',
+  '/imgs/showdown-hero.webp',
   '/fonts/fredoka-latin-500-normal.woff2',
   '/fonts/fredoka-latin-600-normal.woff2',
   '/fonts/source-serif-4-latin-400-normal.woff2',
@@ -44,6 +52,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/fonts/') ||
     url.pathname.startsWith('/icons/') ||
     url.pathname.startsWith('/mascots/') ||
+    url.pathname.startsWith('/imgs/') ||
     url.pathname.startsWith('/_next/static/')
   ) {
     event.respondWith(

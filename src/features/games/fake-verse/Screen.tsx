@@ -65,7 +65,7 @@ export default function FvScreen({ view }: ScreenProps) {
           <div className="a-fade min-w-0 flex-1 rounded-2xl border border-white/15 bg-night-2/80 px-6 py-3" style={{ animationDelay: '2200ms' }}>
             <Verse text={r.verse} refText={r.ref} compact big />
           </div>
-          <div className="shrink-0">
+          <div className="shrink-0 pb-12">
             <MascotView name="fenn" expression="proud" size={180} />
           </div>
         </div>

@@ -90,8 +90,17 @@ function LobbyScreen({ view, urls, soundBtn }: { view: View; urls: RoomUrls | nu
   }
 
   return (
-    <div className="relative flex h-full w-full flex-col justify-between p-14 gap-6">
-      <header className="flex items-center justify-between gap-6 shrink-0">
+    <div className="relative flex h-full w-full flex-col justify-between p-14 gap-6 overflow-hidden">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0">
+        <img
+          src="/imgs/showdown-hero.webp"
+          alt=""
+          className="h-full w-full object-cover opacity-[0.13]"
+          decoding="async"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-night/90 via-night/75 to-night" />
+      </div>
+      <header className="relative z-10 flex items-center justify-between gap-6 shrink-0">
         <Wordmark size={60} />
         <div className="flex items-center gap-4 ml-auto">
           {soundBtn}
@@ -102,7 +111,7 @@ function LobbyScreen({ view, urls, soundBtn }: { view: View; urls: RoomUrls | nu
         </div>
       </header>
 
-      <section className="flex items-center justify-between gap-12 shrink-0">
+      <section className="relative z-10 flex items-center justify-between gap-12 shrink-0">
         <div className="flex flex-col items-start gap-5 min-w-0">
           <p className="fs-h2 text-cloud">{t('lobby.joinAt', { url: urls?.short ?? '…' })}</p>
           <RoomCodeCard code={view.room} big />

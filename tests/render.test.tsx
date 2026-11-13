@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ComponentType } from 'react';
 import type { GameId, View } from '@/shared/types';
@@ -6,7 +8,7 @@ import { GAME_IDS } from '@/shared/types';
 import { act, mkRoom, skip } from './helpers';
 import type { Player } from '@/shared/types';
 import type { Room } from '@/server/rooms/Room';
-import { MASCOT_NAMES, CORE_EXPRESSIONS, MascotView } from '@/ui/mascots';
+import { MASCOT_NAMES, CORE_EXPRESSIONS, MASCOT_SRC, MascotView } from '@/ui/mascots';
 import { Avatar } from '@/ui/avatars';
 import { AVATAR_NAMES } from '@/shared/types';
 
@@ -72,21 +74,20 @@ describe.each(GAME_IDS)('render every phase of %s (server-side) without throwing
 });
 
 describe('mascots and avatars', () => {
-  it('7 mascots x 7 core expressions render with stable ids, labels and under ~3.5 KB', () => {
+  it('7 mascots x 7 core expressions render compressed artwork with accessible labels and motion class', () => {
     for (const name of MASCOT_NAMES) {
+      const diskPath = path.join(process.cwd(), 'public', MASCOT_SRC[name].replace(/^\//, ''));
+      expect(fs.existsSync(diskPath), diskPath).toBe(true);
       for (const e of CORE_EXPRESSIONS) {
-        const svg = renderToStaticMarkup(<MascotView name={name} expression={e} decorative={false} />);
-        expect(svg).toContain(`id="${name}-eyes"`);
-        expect(svg).toContain(`id="${name}-mouth"`);
-        expect(svg).toContain(`id="${name}-fx"`);
-        expect(svg).toContain(`id="${name}-shadow"`);
-        expect(svg).toContain('role="img"');
-        expect(svg).not.toContain('<text');
-        expect(svg.length, `${name}/${e}`).toBeLessThan(5200);
+        const html = renderToStaticMarkup(<MascotView name={name} expression={e} decorative={false} />);
+        expect(html).toContain(`src="${MASCOT_SRC[name]}"`);
+        expect(html).toContain(`data-expression="${e}"`);
+        expect(html).not.toContain('alt=""');
+        expect(html.length, `${name}/${e}`).toBeLessThan(1000);
       }
       expect(renderToStaticMarkup(<MascotView name={name} animate={false} />)).not.toContain('m-bob');
       expect(renderToStaticMarkup(<MascotView name={name} />)).toContain('m-bob');
-      expect(renderToStaticMarkup(<MascotView name={name} />)).toContain('m-blink');
+      expect(renderToStaticMarkup(<MascotView name={name} />)).toContain('aria-hidden="true"');
     }
   });
   it('24 avatars render under 1.2 KB each', () => {
