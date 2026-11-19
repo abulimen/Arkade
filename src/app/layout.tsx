@@ -1,10 +1,16 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import '@fontsource/fredoka/latin-400.css';
+import '@fontsource/fredoka/latin-500.css';
+import '@fontsource/fredoka/latin-600.css';
+import '@fontsource/fredoka/latin-700.css';
+import '@fontsource/source-serif-4/latin-400.css';
+import '@fontsource/source-serif-4/latin-400-italic.css';
 import { ServiceWorkerRegister } from '@/ui/pwa';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Arkade · Bible Party Games for Game Night',
+  title: 'Arkade · Bible Party Games Console',
   description: 'Real-time multiplayer Bible party games for church youth nights, families, and small groups. One projector, every phone, one MC.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
@@ -14,16 +20,15 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/favicon.svg', type: 'image/svg+xml' },
-      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/imgs/Neon%20Arkade%20Emblem%20Icon.png', type: 'image/png' },
     ],
-    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: [{ url: '/imgs/Neon%20Arkade%20Emblem%20Icon.png', type: 'image/png' }],
+    apple: [{ url: '/imgs/Neon%20Arkade%20Emblem%20Icon.png', type: 'image/png' }],
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0E0C24',
+  themeColor: '#07080C',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
@@ -32,9 +37,6 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="preload" href="/fonts/fredoka-latin-600-normal.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
-      </head>
       <body className="antialiased">
         <ServiceWorkerRegister />
         {children}

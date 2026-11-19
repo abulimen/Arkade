@@ -7,8 +7,8 @@
   "scope": "/mc",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0B0A1A",
-  "theme_color": "#14123B",
+  "background_color": "#07080C",
+  "theme_color": "#0C0E14",
   "categories": ["games", "entertainment", "utilities"],
   "icons": [
     {

@@ -1,4 +1,10 @@
 // Pure scoring helpers. All numbers come straight from the PRD.
+/** Deduct 1 point per tenth of a second (100ms) wasted since the round or clue started. */
+export function tenthsPenalty(startedAt: number, answeredAt: number, maxPenalty: number): number {
+  const elapsedMs = Math.max(0, answeredAt - startedAt);
+  return Math.min(maxPenalty, Math.floor(elapsedMs / 100));
+}
+
 export function speedBonus(maxBonus: number, startedAt: number, endsAt: number, answeredAt: number): number {
   const span = Math.max(1, endsAt - startedAt);
   const t = Math.min(Math.max((answeredAt - startedAt) / span, 0), 1);
@@ -9,12 +15,15 @@ export const WCF_PER_CARD = 160;
 export function scoreOrder(player: readonly string[], truth: readonly string[], bonusMax: number, timing: [number, number, number]): number {
   const correct = player.filter((v, i) => v === truth[i]).length;
   const perfect = correct === truth.length;
-  return correct * WCF_PER_CARD + (perfect ? speedBonus(bonusMax, timing[0], timing[1], timing[2]) : 0);
+  return correct * WCF_PER_CARD + (perfect ? Math.max(0, bonusMax - tenthsPenalty(timing[0], timing[2], bonusMax)) : 0);
 }
 
 export const WAI_POINTS = [500, 400, 300, 200, 100] as const;
 export const WAI_PENALTY = 50;
-export const whoAmIPoints = (clueIndex: number) => WAI_POINTS[Math.min(Math.max(clueIndex, 0), 4)];
+export const whoAmIPoints = (clueIndex: number, elapsedMs = 0) => {
+  const base = WAI_POINTS[Math.min(Math.max(clueIndex, 0), 4)];
+  return Math.max(1, base - Math.floor(Math.max(0, elapsedMs) / 100));
+};
 
 export const FV_TRUTH = 500;
 export const FV_PER_VOTE = 250;

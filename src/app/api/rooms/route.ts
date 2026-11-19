@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const { gameId } = body.data;
   const config = body.data.config as GameConfig;
   if (!GAME_META[gameId].modes.includes(config.mode)) config.mode = 'individual';
-  const made = m.create(gameId, config);
+  const made = await m.createAsync(gameId, config);
   if ('error' in made) return json({ error: made.error }, 429);
   const base = baseUrl(req);
   const code = made.room.code;

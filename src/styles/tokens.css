@@ -1,33 +1,33 @@
-/* Arkade design tokens — Warm Arcade Showtime (DESIGN.md). */
+/* Arkade design tokens — Console Showtime OS (DESIGN.md). */
 :root {
-  --bg-abyss: #0b0a1a;
-  --night: #14123b;
-  --night-2: #1e1b55;
-  --night-3: #2a2670;
-  --cloud: #f4f1ff;
+  --bg-abyss: #07080c;
+  --night: #0c0e14;
+  --night-2: #131722;
+  --night-3: #1c2230;
+  --cloud: #f2f5fa;
   --white: #ffffff;
-  --ark-gold: #ffc83d;
-  --plank: #c98a4b;
-  --plank-dark: #a9692f;
+  --ark-gold: #ffd026;
+  --plank: #e2a83b;
+  --plank-dark: #b8821e;
   --coral: #ff5c6c;
   --tangerine: #ff9a3d;
   --lemon: #ffe14d;
-  --leaf: #3dd68c;
-  --sky: #3db8ff;
-  --indigo: #6c5ce7;
-  --violet: #b15cff;
+  --leaf: #38ec82;
+  --sky: #29c5ff;
+  --indigo: #5856d6;
+  --violet: #b56bff;
   --success: #2ed573;
   --warning: #ffa502;
-  --danger: #ff4757;
+  --danger: #ff5263;
   --radius-sm: 14px;
   --radius-md: 22px;
   --radius-lg: 28px;
-  --shadow-chunky: 0 6px 0 rgba(7, 5, 20, 0.72), inset 0 2px 0 rgba(255, 255, 255, 0.28);
-  --shadow-card: 0 18px 42px -12px rgba(5, 4, 18, 0.75), 0 6px 0 rgba(8, 6, 24, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  --dur-fast: 120ms;
-  --dur-base: 220ms;
-  --dur-slow: 380ms;
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-chunky: 0 10px 28px -8px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  --shadow-card: 0 24px 56px -14px rgba(0, 0, 0, 0.82), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --dur-fast: 140ms;
+  --dur-base: 260ms;
+  --dur-slow: 420ms;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --font-display: "Fredoka", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-verse: "Source Serif 4", Georgia, serif;
 }

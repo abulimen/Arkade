@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arkade-shell-v3';
+const CACHE_NAME = 'arkade-shell-v4';
 const PRECACHE_URLS = [
   '/',
   '/join',
@@ -19,10 +19,6 @@ const PRECACHE_URLS = [
   '/mascots/tilly.webp',
   '/mascots/cami.webp',
   '/imgs/showdown-hero.webp',
-  '/fonts/fredoka-latin-500-normal.woff2',
-  '/fonts/fredoka-latin-600-normal.woff2',
-  '/fonts/source-serif-4-latin-400-normal.woff2',
-  '/fonts/source-serif-4-latin-400-italic.woff2',
 ];
 
 self.addEventListener('install', (event) => {

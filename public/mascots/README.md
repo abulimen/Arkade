@@ -11,6 +11,6 @@ Drop your generated mascot images (from `docs/MASCOT-PROMPTS.md`) directly into 
 | `olive` | **Olive** (Courier Dove / Loading / Toasts) | `olive.png` or `olive.webp` | `olive-idle.png`, `olive-happy.png`, `olive-oops.png` |
 | `wilf` | **Wilf** (*Spot the Wolf*) | `wilf.png` or `wilf.webp` | `wilf-idle.png`, `wilf-thinking.png`, `wilf-oops.png`, `wilf-surprised.png`, `wilf-cheer.png` |
 | `fenn` | **Fenn** (*Fake Verse*) | `fenn.png` or `fenn.webp` | `fenn-idle.png`, `fenn-happy.png`, `fenn-thinking.png`, `fenn-oops.png`, `fenn-cheer.png` |
-| `jari` | **Jari** (*Gideon's 300*) | `jari.png` or `jari.webp` | `jari-idle.png`, `jari-surprised.png`, `jari-cheer.png`, `jari-oops.png` |
+| `jari` | **Jari** (*Battle Royale*) | `jari.png` or `jari.webp` | `jari-idle.png`, `jari-surprised.png`, `jari-cheer.png`, `jari-oops.png` |
 | `tilly` | **Tilly** (*What Came First?*) | `tilly.png` or `tilly.webp` | `tilly-idle.png`, `tilly-thinking.png`, `tilly-cheer.png`, `tilly-oops.png` |
 | `cami` | **Cami** (*Who Am I?*) | `cami.png` or `cami.webp` | `cami-idle.png`, `cami-thinking.png`, `cami-cheer.png` |

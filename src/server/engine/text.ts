@@ -26,14 +26,64 @@ export function editDistance(a: string, b: string): number {
 
 const strip = (s: string) => norm(s).replace(/^(the|a|an) /, '');
 
-/** Wolf guess check: exact, alias, or edit distance 1 for words over 5 letters. */
+const CONTAINER_OR_EVENT_HEADS = new Set([
+  'birth', 'death', 'fall', 'sale', 'healing', 'raising', 'conversion', 'destruction',
+  'offering', 'temptation', 'vision', 'flight', 'agony', 'return', 'song', 'routing',
+  'translation', 'rebuilding', 'council', 'book', 'river', 'sea', 'mount', 'garden',
+  'land', 'city', 'waters', 'daughter', 'queen', 'king', 'baptism', 'fishers',
+]);
+
+const GENERIC_TAILS = new Set([
+  'son', 'sons', 'men', 'man', 'woman', 'day', 'night', 'law', 'god', 'lord',
+  'one', 'two', 'four', 'five', 'seven', 'ten', 'thousand', 'river', 'road',
+  'sea', 'mount', 'pool', 'tree', 'head', 'mouth', 'hand',
+]);
+
+const PLACE_TAILS = new Set(['river', 'road', 'pool', 'sea', 'mount']);
+
+function expandCandidates(phrase: string): string[] {
+  const p = strip(phrase);
+  if (!p) return [];
+  const out = new Set<string>([p]);
+
+  const ofMatch = p.match(/^(.+?)\s+of\s+(?:the\s+)?(.+)$/);
+  if (ofMatch) {
+    const [, x, y] = ofMatch;
+    out.add(`${y}s ${x}`);
+    out.add(`${y} ${x}`);
+    if (!CONTAINER_OR_EVENT_HEADS.has(x) && x.length >= 3) out.add(x);
+    if (CONTAINER_OR_EVENT_HEADS.has(x) && y.length >= 3) out.add(y);
+  }
+
+  const twoMatch = p.match(/^([a-z0-9]+)\s+([a-z0-9]+)$/);
+  if (twoMatch) {
+    const [, w1, w2] = twoMatch;
+    const stem1 = w1.endsWith('s') && w1.length > 3 ? w1.slice(0, -1) : w1;
+    out.add(`${stem1} ${w2}`);
+    out.add(`${w2} of ${stem1}`);
+    out.add(`${w2} of ${w1}`);
+    if (!GENERIC_TAILS.has(w2) && w2.length >= 3) out.add(w2);
+    if (PLACE_TAILS.has(w2) && w1.length >= 3) out.add(w1);
+  }
+
+  return [...out];
+}
+
+/** Wolf guess check: exact, alias, possessive/core-noun equivalents, or edit distance 1 over 5 letters. */
 export function guessMatches(guess: string, target: string, aliases: readonly string[] = []): boolean {
   const g = strip(guess);
   if (!g) return false;
-  const t = strip(target);
-  if (g === t) return true;
-  if (aliases.some((a) => strip(a) === g)) return true;
-  return t.length > 5 && editDistance(g, t) <= 1;
+  const candidates = new Set<string>(expandCandidates(target));
+  for (const a of aliases) {
+    const sa = strip(a);
+    if (sa) candidates.add(sa);
+    for (const ca of expandCandidates(a)) candidates.add(ca);
+  }
+  for (const c of candidates) {
+    if (g === c) return true;
+    if (c.length > 5 && editDistance(g, c) <= 1) return true;
+  }
+  return false;
 }
 
 /** True if a player-typed answer is too close to the truth (never explained to the player). */

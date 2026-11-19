@@ -116,17 +116,6 @@ describe('control, pause and views', () => {
     room.close();
   });
 
-  it('casting lots highlights the chosen phones (FR-28, FR-33)', () => {
-    const { room, bots } = mkRoom('spot-the-wolf', 8);
-    room.mcAction('CAST_LOTS', { n: 3 });
-    const chosen = new Set(room.spotlight!.ids);
-    const flags = bots.map((b) => room.viewFor({ role: 'player', playerId: b.id }).me!.spotlighted);
-    expect(flags.filter(Boolean).length).toBe(3);
-    bots.forEach((b, i) => expect(flags[i]).toBe(chosen.has(b.id)));
-    expect(room.viewFor({ role: 'screen' }).spotlight?.players.length).toBe(3);
-    room.close();
-  });
-
   it('the projector never lists the bottom of the ranking', () => {
     const { room, bots } = mkRoom('what-came-first', 12);
     room.mcAction('START');
@@ -165,6 +154,76 @@ describe('snapshots (restart recovery)', () => {
     late.mcAction('RESUME');
     expect(late.status()).toBe('playing');
     late.close();
+  });
+
+  it('live restore preserves connected, lastSeenAt, rev, historyRecorded and does not auto-pause expired timers', () => {
+    const { room, bots, clock } = mkRoom('what-came-first', 2);
+    bots[0].lastSeenAt = clock.t;
+    room.historyRecorded = true;
+    room.mcAction('START');
+    const revBefore = room.rev;
+    clock.adv(10 * 60_000);
+    const snap = JSON.parse(JSON.stringify(room.toSnapshot()));
+    room.close();
+    const live = Room.restore(snap, { now: () => clock.t, live: true });
+    expect(live.players[bots[0].id].connected).toBe(true);
+    expect(live.players[bots[0].id].lastSeenAt).toBe(clock.t - 10 * 60_000);
+    expect(live.rev).toBe(revBefore);
+    expect(live.historyRecorded).toBe(true);
+    expect(live.status()).toBe('playing');
+    expect(live.advanceDueTimers()).toBe(true);
+    expect(live.game.phase.name).toBe('order');
+    expect(live.advanceDueTimers()).toBe(false);
+    live.close();
+  });
+
+  it('live round-trips mark dirty and preserve PAUSE, RESUME, ADD_TIME, SKIP, KICK, BAN, SOUND, and join', () => {
+    const { room, bots, clock } = mkRoom('what-came-first', 3);
+    const roundTrip = (r: Room) => {
+      expect(r.dirty).toBe(true);
+      const snap = JSON.parse(JSON.stringify(r.toSnapshot()));
+      r.close();
+      return Room.restore(snap, { now: () => clock.t, live: true });
+    };
+
+    room.mcAction('START');
+    let cur = roundTrip(room);
+    cur.mcAction('PAUSE');
+    expect(cur.status()).toBe('paused');
+    cur = roundTrip(cur);
+    expect(cur.status()).toBe('paused');
+
+    cur.mcAction('RESUME');
+    cur = roundTrip(cur);
+    expect(cur.status()).toBe('playing');
+
+    const prevEnds = cur.game.phase.endsAt as number;
+    cur.mcAction('ADD_TIME', { seconds: 20 });
+    cur = roundTrip(cur);
+    expect(cur.game.phase.endsAt).toBe(prevEnds + 20_000);
+
+    cur.mcAction('SKIP');
+    cur = roundTrip(cur);
+    expect(cur.game.phase.name).toBe('order');
+
+    cur.mcAction('SOUND', { on: false, volume: 0.3 });
+    cur = roundTrip(cur);
+    expect(cur.sound).toEqual({ on: false, volume: 0.3 });
+
+    cur.mcAction('KICK', { playerId: bots[0].id });
+    cur = roundTrip(cur);
+    expect(cur.players[bots[0].id]).toBeUndefined();
+
+    cur.mcAction('BAN', { playerId: bots[1].id });
+    cur = roundTrip(cur);
+    expect(cur.banned.has(bots[1].token)).toBe(true);
+    expect(cur.join({ nickname: 'Bot2', token: bots[1].token })).toEqual({ error: 'BANNED' });
+
+    const lateJoin = cur.join({ nickname: 'Latecomer' });
+    expect('player' in lateJoin).toBe(true);
+    cur = roundTrip(cur);
+    if ('player' in lateJoin) expect(cur.players[lateJoin.player.id]?.nickname).toBe('Latecomer');
+    cur.close();
   });
 });
 

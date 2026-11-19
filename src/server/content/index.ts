@@ -88,8 +88,8 @@ export function validate(raw = expand()): { content: Content; problems: Problem[
   return { content: out, problems };
 }
 
-/** PRD section 10 launch targets, used for the coverage report. */
-export const TARGETS = { wcf: 50, fv: 80, g300: 120, wolf: 100, wai: 50 } as const;
+/** Expanded content library targets, used for the coverage report. */
+export const TARGETS = { wcf: 600, fv: 1000, g300: 2000, wolf: 600, wai: 500 } as const;
 
 export function coverage(c: Content) {
   const tally = (items: { difficulty: string; audience: string[] }[]) => ({

@@ -1,74 +1,147 @@
 'use client';
+
 import type { ReactNode } from 'react';
-import { GAME_META } from '@/shared/types';
-import type { GameId } from '@/shared/types';
 import { t } from '@/i18n';
 import { Icon } from '@/ui/icons';
-import { MascotView } from '@/ui/mascots';
-import type { Expression } from '@/ui/mascots';
+import { MascotView, type MascotName } from '@/ui/mascots';
 
-export function Waiting({ game, expr = 'idle', title, body }: { game: GameId; expr?: Expression; title: string; body?: string }) {
+export function Waiting({ mascot = 'arky', title, body }: { mascot?: MascotName; title: string; body?: string }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-      <MascotView name={GAME_META[game].mascot} expression={expr} size={128} />
-      <h2 className="fs-h1">{title}</h2>
-      {body && <p className="fs-body text-cloud">{body}</p>}
+    <div className="arcade-panel p-6 sm:p-7 text-center space-y-4 a-pop relative overflow-hidden">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-40 w-56 rounded-full bg-sky/18 blur-3xl"
+      />
+      <div className="relative z-10 mx-auto w-fit rounded-3xl border border-white/12 bg-night-3/90 p-3.5 shadow-lg">
+        <MascotView name={mascot} expression="happy" size={100} animate decorative />
+      </div>
+      <div className="relative z-10 space-y-1.5">
+        <h2 className="font-bold text-white fs-h2 leading-tight">{title}</h2>
+        {body && <p className="text-sm text-slate max-w-sm mx-auto leading-relaxed">{body}</p>}
+      </div>
     </div>
   );
 }
 
-export function LockedIn() {
+export function LockedIn({ sub }: { sub?: string }) {
   return (
-    <p className="a-pop flex items-center justify-center gap-2 rounded-2xl border-[3px] border-night bg-leaf px-4 py-3 fs-h2 text-night" role="status">
-      <Icon n="check" size={28} />{t('phone.lockedIn')}
-    </p>
-  );
-}
-
-/** Correct / wrong feedback always pairs colour with an icon and a label. */
-export function Feedback({ ok, gain, children }: { ok: boolean; gain?: number; children?: ReactNode }) {
-  return (
-    <div className={`a-pop flex items-center gap-3 rounded-2xl border-[3px] border-night px-4 py-3 text-night ${ok ? 'bg-leaf' : 'bg-coral'}`} role="status">
-      <Icon n={ok ? 'check' : 'cross'} size={32} />
-      <div className="flex-1"><div className="fs-h2">{ok ? t('state.correct') : t('state.wrong')}</div>{children && <div className="fs-small">{children}</div>}</div>
-      {gain != null && gain !== 0 && <div className="fs-h1">{gain > 0 ? '+' : ''}{gain}</div>}
+    <div className="arcade-panel border-leaf/45 bg-leaf/10 p-6 sm:p-7 text-center space-y-4 a-pop shadow-[0_0_36px_-10px_rgba(56,236,130,0.45)]">
+      <div className="mx-auto w-fit rounded-3xl border border-leaf/35 bg-night-2/90 p-3.5">
+        <MascotView name="arky" expression="happy" size={88} animate decorative />
+      </div>
+      <div className="inline-flex items-center gap-2 rounded-full bg-leaf px-4 py-1.5 text-sm font-extrabold uppercase tracking-wider text-night shadow">
+        <Icon n="check" size={16} />
+        <span>{t('phone.lockedIn')}</span>
+      </div>
+      {sub && <p className="text-sm text-cloud leading-relaxed">{sub}</p>}
     </div>
   );
 }
 
-export function Verse({ text, refText, big, compact }: { text: string; refText: string; big?: boolean; compact?: boolean }) {
+export function Feedback({ ok, gain, title, sub }: { ok: boolean; gain: number; title?: string; sub?: string }) {
   return (
-    <blockquote className={`fs-verse italic ${compact ? '!text-[28px] !leading-snug' : ''} ${big ? 'max-w-[1400px]' : ''}`}>
-      “{text}”
-      <footer className="fs-small not-italic text-gold mt-1">{refText} · KJV</footer>
+    <div
+      className={`arcade-panel p-5 sm:p-6 flex items-center gap-4 a-pop ${
+        ok
+          ? 'border-leaf/50 bg-leaf/12 shadow-[0_0_36px_-10px_rgba(56,236,130,0.42)]'
+          : 'border-coral/50 bg-coral/12 shadow-[0_0_36px_-10px_rgba(255,92,108,0.35)]'
+      }`}
+    >
+      <div className="rounded-2xl border border-white/12 bg-night-2/90 p-2 shrink-0">
+        <MascotView name="arky" expression={ok ? 'cheer' : 'oops'} size={68} animate decorative />
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`font-bold fs-h3 ${ok ? 'text-leaf' : 'text-coral'}`}>
+            {title ?? t(ok ? 'state.correct' : 'state.wrong')}
+          </span>
+          {gain > 0 && (
+            <span className="rounded-full bg-gold px-2.5 py-0.5 text-xs font-extrabold text-night tabular-nums shadow">
+              +{gain}
+            </span>
+          )}
+        </div>
+        {sub && <p className="text-sm text-cloud leading-snug">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+export function Verse({ verse, refText, big = false }: { verse: string; refText: string; big?: boolean }) {
+  return (
+    <blockquote
+      className={`rounded-3xl border border-gold/30 bg-night-2/95 space-y-3 shadow-[0_18px_40px_-14px_rgba(0,0,0,0.8)] ${
+        big ? 'p-8' : 'p-5'
+      }`}
+    >
+      <p className={`font-serif italic text-cloud leading-relaxed ${big ? 'text-[30px]' : 'text-base sm:text-lg'}`}>
+        “{verse}”
+      </p>
+      <footer>
+        <span
+          className={`inline-block rounded-full bg-gold font-bold text-night ${
+            big ? 'px-5 py-1.5 text-[20px]' : 'px-3 py-1 text-xs'
+          }`}
+        >
+          {refText}
+        </span>
+      </footer>
     </blockquote>
   );
 }
 
-/** Fenn's paper scroll for Fake Verse prompts. */
-export function ScrollCard({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function ScrollCard({ children, big = false, className = '' }: { children: ReactNode; big?: boolean; className?: string }) {
   return (
-    <div className={`relative mx-3 rounded-[28px] border-[5px] border-night bg-cloud px-7 py-6 text-night ${className}`}>
-      <span className="absolute -left-3 top-5 bottom-5 w-4 rounded-full border-[3px] border-night bg-plank" aria-hidden="true" />
-      <span className="absolute -right-3 top-5 bottom-5 w-4 rounded-full border-[3px] border-night bg-plank" aria-hidden="true" />
+    <div
+      className={`rounded-3xl border-2 border-gold/65 bg-plank text-night shadow-[0_24px_60px_-16px_rgba(0,0,0,0.9)] ${
+        big ? 'p-9 text-[36px] leading-snug' : 'p-5 text-lg sm:text-xl leading-snug'
+      } font-semibold ${className}`}
+    >
       {children}
     </div>
   );
 }
 
-export function Pips({ n, of, label }: { n: number; of: number; label: string }) {
+export function Pips({ n, total, label }: { n: number; total: number; label?: string }) {
+  const safeTotal = Math.max(1, total);
+  const segs = Math.min(safeTotal, 14);
+  const filled = Math.round((Math.min(n, safeTotal) / safeTotal) * segs);
   return (
-    <div className="flex items-center gap-2" role="img" aria-label={label}>
-      {Array.from({ length: of }, (_, i) => <span key={i} className={`h-3 flex-1 rounded-full ${i < n ? 'bg-gold' : 'bg-night-3'}`} />)}
+    <div className="rounded-2xl border border-white/10 bg-night-2/85 px-4 py-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 text-xs font-bold uppercase tracking-wider text-slate">
+        <span>{label ?? t('screen.locked', { n, total })}</span>
+        <span className="text-leaf tabular-nums">
+          {n}/{total}
+        </span>
+      </div>
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${segs}, minmax(0, 1fr))` }} aria-hidden="true">
+        {Array.from({ length: segs }, (_, idx) => (
+          <span
+            key={idx}
+            className={`h-2.5 rounded-full transition-all duration-300 ${
+              idx < filled ? 'bg-leaf shadow-[0_0_8px_rgba(56,236,130,0.6)]' : 'bg-white/12'
+            }`}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-export function Progress({ n, total, label }: { n: number; total: number; label: string }) {
+export function Progress({ n, total, label, big = false }: { n: number; total: number; label?: string; big?: boolean }) {
+  const pct = total > 0 ? Math.min(100, Math.round((n / total) * 100)) : 0;
   return (
-    <div className="flex items-center gap-4" role="status" aria-label={label}>
-      <div className="h-6 flex-1 rounded-full bg-night-3"><div className="h-full rounded-full bg-leaf transition-[width] duration-500" style={{ width: `${total ? (n / total) * 100 : 0}%` }} /></div>
-      <span className="font-semibold text-white">{n}/{total}</span>
+    <div className={`rounded-2xl border border-white/10 bg-night-2/85 space-y-2.5 ${big ? 'px-6 py-4' : 'px-4 py-3'}`}>
+      <div className={`flex items-center justify-between gap-3 font-bold text-cloud ${big ? 'text-[22px]' : 'text-xs uppercase tracking-wider'}`}>
+        <span>{label ?? t('screen.locked', { n, total })}</span>
+        <span className="text-gold tabular-nums">{pct}%</span>
+      </div>
+      <div className={`w-full overflow-hidden rounded-full bg-night-3 border border-white/8 ${big ? 'h-4' : 'h-2.5'}`}>
+        <div
+          className="h-full rounded-full transition-all duration-500 ease-out"
+          style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #38EC82 0%, #29C5FF 100%)' }}
+        />
+      </div>
     </div>
   );
 }

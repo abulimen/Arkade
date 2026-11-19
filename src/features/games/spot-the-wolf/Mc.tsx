@@ -1,22 +1,48 @@
 'use client';
+
 import { t } from '@/i18n';
-import { Icon } from '@/ui/icons';
+import { Button } from '@/ui/kit';
 import type { McProps } from '../types';
 
-export default function WolfMc({ view, mc }: McProps) {
-  const d = view.data;
-  const clues = (d.mcClues ?? []) as { i: number; nick: string; text: string; hidden: boolean }[];
+interface WolfMcData {
+  currentTurn?: string | null;
+  mcClues?: { i: number; nick: string; text: string; hidden: boolean }[];
+  log?: string[];
+}
+
+export default function SpotWolfMc({ view, mc }: McProps) {
+  const d = view.data as WolfMcData;
+  const clues = d.mcClues ?? [];
+
   return (
-    <section className="rounded-3xl bg-night-2 p-4" aria-label={t('mc.live')}>
-      <h2 className="fs-h2 mb-2">{t('mc.live')}</h2>
-      {d.currentTurn && <p className="fs-body">{t('wolf.turnOf', { name: d.currentTurn })}</p>}
-      <ul className="mt-2 flex max-h-64 flex-col gap-2 overflow-y-auto">
-        {clues.map((c) => (
-          <li key={c.i} className="flex items-center gap-2 rounded-xl bg-night-3 px-3 py-1 fs-body"><span className="flex-1 truncate"><b>{c.nick}</b>: {c.hidden ? <s>{c.text}</s> : c.text}</span>
-            <button type="button" disabled={c.hidden} onClick={() => void mc('HIDE_ANSWER', { index: c.i })} className="inline-flex min-h-12 items-center gap-1 rounded-xl bg-coral px-3 font-semibold text-night disabled:opacity-50"><Icon n="eyeoff" size={20} />{c.hidden ? t('mc.hidden') : t('mc.hide')}</button></li>
-        ))}
-      </ul>
-      {(d.log as string[]).length > 0 && <ul className="mt-3 fs-small text-cloud">{(d.log as string[]).map((l, i) => <li key={i}>{l}</li>)}</ul>}
-    </section>
+    <div className="space-y-3">
+      {d.currentTurn && (
+        <div className="rounded-2xl border border-gold/40 bg-gold/12 px-4 py-2.5 text-sm font-bold text-gold">
+          {t('wolf.turnOf', { name: d.currentTurn })}
+        </div>
+      )}
+
+      {clues.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-bold uppercase tracking-widest text-slate">{t('wolf.clues')}</div>
+          {clues.map((c) => (
+            <div
+              key={c.i}
+              className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-night-3/80 px-3.5 py-2"
+            >
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-gold mr-2">{c.nick}</span>
+                <span className={`text-sm ${c.hidden ? 'line-through text-slate' : 'text-white font-medium'}`}>
+                  {c.text}
+                </span>
+              </div>
+              <Button variant="ghost" small onClick={() => mc('HIDE_ANSWER', { index: c.i })}>
+                {c.hidden ? t('mc.hidden') : t('mc.hide')}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

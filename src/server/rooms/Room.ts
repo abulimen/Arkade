@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { AVATAR_NAMES, GAME_META } from '@/shared/types';
+import { AVATAR_COUNT, GAME_META } from '@/shared/types';
 import type { GameConfig, GameId, McInfo, MyInfo, Player, PlayerPublic, RankEntry, RoomStatus, View } from '@/shared/types';
 import { Rng } from '../engine/rng';
 import { END, addTime, mkPhase, pausePhase, rankByScore, resumePhase } from '../engine/kit';
@@ -23,6 +23,7 @@ export interface RoomOpts {
   content?: Content;
   now?: () => number;
   seed?: number;
+  live?: boolean;
 }
 
 export interface Snapshot {
@@ -39,9 +40,12 @@ export interface Snapshot {
   rngState: number;
   createdAt: number;
   lastActivityAt: number;
-  spotlight: { ids: string[]; at: number } | null;
   sound: { on: boolean; volume: number };
   savedAt: number;
+  closed?: boolean;
+  closedAt?: number;
+  historyRecorded?: boolean;
+  rtts?: Record<string, number>;
 }
 
 export const hashKey = (k: string) => crypto.createHash('sha256').update(k).digest('hex');
@@ -64,18 +68,20 @@ export class Room {
   closedAt = 0;
   rng: Rng;
   subs = new Set<Sub>();
-  spotlight: { ids: string[]; at: number } | null = null;
   sound = { on: true, volume: 0.7 };
   rtts: Record<string, number> = {};
   dirty = false;
+  historyRecorded = false;
   persist: ((urgent: boolean) => void) | null = null;
   onClose: (() => void) | null = null;
+  onEnd: (() => void) | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private rankMemo: { rev: number; ids: string[]; idx: Map<string, number> } | null = null;
   private now: () => number;
   private content: Content;
   private maxPlayers: number;
+  private live: boolean;
 
   constructor(code: string, gameId: GameId, config: GameConfig, hostKeyHash: string, opts: RoomOpts = {}) {
     this.code = code;
@@ -85,6 +91,7 @@ export class Room {
     this.now = opts.now ?? Date.now;
     this.content = opts.content ?? getContent();
     this.maxPlayers = opts.maxPlayers ?? 500;
+    this.live = !!opts.live;
     this.rng = new Rng(opts.seed ?? crypto.randomInt(1, 2 ** 31 - 1));
     this.createdAt = this.lastActivityAt = this.now();
   }
@@ -106,6 +113,13 @@ export class Room {
     const a = Buffer.from(hashKey(key));
     const b = Buffer.from(this.hostKeyHash);
     return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+
+  private pickUniqueAvatar(): number {
+    const used = new Set(Object.values(this.players).map((p) => p.avatar));
+    const free: number[] = [];
+    for (let i = 0; i < AVATAR_COUNT; i++) if (!used.has(i)) free.push(i);
+    return free.length ? free[rint(free.length)] : rint(AVATAR_COUNT);
   }
 
   // ---------- players ----------
@@ -132,7 +146,7 @@ export class Room {
     do id = 'p' + crypto.randomBytes(3).toString('hex'); while (this.players[id]);
     const spectate = !!this.game && GAME_META[this.gameId].lateJoin === 'spectate';
     const p: Player = {
-      id, token: crypto.randomBytes(16).toString('hex'), nickname, avatar: o.avatar ?? rint(AVATAR_NAMES.length), color: team ? teams % 6 : rint(6),
+      id, token: crypto.randomBytes(16).toString('hex'), nickname, avatar: o.avatar ?? this.pickUniqueAvatar(), color: team ? teams % 6 : rint(6),
       kind: team ? 'team' : 'individual', teamSize: team ? o.teamSize : undefined, role: spectate ? 'spectator' : 'player', connected: false, rerolled: false, joinedAt: this.now(),
     };
     this.players[id] = p;
@@ -189,6 +203,10 @@ export class Room {
     this.touch(changed);
     this.schedule();
     if (changed) this.persist?.(true);
+    if (next?.phase?.name === END && !this.historyRecorded) {
+      this.historyRecorded = true;
+      this.onEnd?.();
+    }
   }
 
   /** Bump rev and push views (coalesced to 250 ms unless urgent). */
@@ -196,6 +214,7 @@ export class Room {
     this.rev++;
     this.dirty = true;
     this.rankMemo = null;
+    if (this.live) return;
     if (urgent) this.flush();
     else if (!this.flushTimer) this.flushTimer = setTimeout(() => this.flush(), 250);
   }
@@ -223,6 +242,7 @@ export class Room {
   schedule() {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.live) return;
     const g = this.game;
     if (this.closed || !g || g.phase.paused || g.phase.endsAt == null) return;
     const delay = Math.max(0, g.phase.endsAt - this.now());
@@ -233,6 +253,39 @@ export class Room {
       if (cur.phase.endsAt - this.now() > 50) return this.schedule();
       this.apply({ by: 'system', type: 'PHASE_TIMEOUT' });
     }, Math.min(delay, 2 ** 31 - 1));
+  }
+
+  currentEndsAt(): number | null {
+    if (this.closed || !this.game || this.game.phase.paused) return null;
+    return this.game.phase.endsAt ?? null;
+  }
+
+  advanceDueTimers(): boolean {
+    let changed = false;
+    const now = this.now();
+    if (this.live) {
+      let staleTouched = false;
+      for (const p of Object.values(this.players)) {
+        if (p.connected && p.lastSeenAt != null && now - p.lastSeenAt > 95_000) {
+          p.connected = false;
+          staleTouched = true;
+        }
+      }
+      if (staleTouched) {
+        this.touch(false);
+        changed = true;
+      }
+    }
+    for (let guard = 0; guard < 10; guard++) {
+      if (this.closed || !this.game || this.game.phase.paused) break;
+      const endsAt = this.game.phase.endsAt;
+      if (endsAt == null || endsAt > this.now()) break;
+      const prevRev = this.rev;
+      this.apply({ by: 'system', type: 'PHASE_TIMEOUT' });
+      if (this.rev === prevRev) break;
+      changed = true;
+    }
+    return changed;
   }
 
   apply(a: GAction): string | null {
@@ -255,7 +308,7 @@ export class Room {
     }
     if (type === 'REROLL') {
       if (this.game || p.rerolled) return { ok: false, error: 'NO_REROLL' };
-      p.avatar = (p.avatar + 1 + rint(AVATAR_NAMES.length - 1)) % AVATAR_NAMES.length;
+      p.avatar = this.pickUniqueAvatar();
       p.rerolled = true;
       this.touch(false);
       return { ok: true };
@@ -288,15 +341,6 @@ export class Room {
         if (ok) this.touch(true);
         return { ok };
       }
-      case 'CAST_LOTS': {
-        const pool = Object.values(this.players).filter((p) => p.role === 'player' && p.connected);
-        const n = Math.min(Math.max(Math.floor(Number(payload.n) || 1), 1), 50, pool.length);
-        if (!pool.length) return { ok: false, error: 'NO_PLAYERS' };
-        this.spotlight = { ids: this.rng.sample(pool, n).map((p) => p.id), at: now };
-        this.touch(true);
-        return { ok: true };
-      }
-      case 'CLEAR_LOTS': this.spotlight = null; this.touch(true); return { ok: true };
       case 'SOUND':
         if (typeof payload.on === 'boolean') this.sound.on = payload.on;
         if (typeof payload.volume === 'number') this.sound.volume = Math.min(1, Math.max(0, payload.volume));
@@ -317,14 +361,13 @@ export class Room {
     const eligible = Object.values(this.players).filter((p) => p.role === 'player');
     let stage: string[] | undefined;
     if (this.gameId === 'spot-the-wolf') {
-      const asked = Array.isArray(payload.stage) ? (payload.stage as unknown[]).map(String) : this.spotlight?.ids;
+      const asked = Array.isArray(payload.stage) ? (payload.stage as unknown[]).map(String) : undefined;
       let ids = (asked ?? []).filter((id) => this.players[id]);
       if (ids.length < meta.minPlayers || ids.length > 10) ids = asked && asked.length ? ids : this.rng.sample(eligible.filter((p) => p.connected).map((p) => p.id), 10);
       if (ids.length < meta.minPlayers || ids.length > 10) return { ok: false, error: 'STAGE_SIZE' };
       stage = ids;
     } else if (eligible.filter((p) => p.connected).length < meta.minPlayers) return { ok: false, error: 'NEED_PLAYERS' };
     if (stage) for (const p of Object.values(this.players)) p.role = stage.includes(p.id) ? 'player' : 'spectator';
-    this.spotlight = null;
     this.commit(this.module.createState(this.ctx(), { stage }));
     return { ok: true };
   }
@@ -356,6 +399,11 @@ export class Room {
     return { ...pub(p), score: Math.max(0, Math.round(this.game?.scores?.[id] ?? 0)) };
   }
 
+  topEntries(limit = 10): RankEntry[] {
+    if (!this.game) return [];
+    return this.ranking().ids.filter((id) => this.players[id]).slice(0, limit).map((id) => this.entry(id));
+  }
+
   private mcInfo(hint: string, controls: string[]): McInfo {
     const all = Object.values(this.players);
     const connected = all.filter((p) => p.connected).length;
@@ -365,6 +413,7 @@ export class Room {
       controls,
       players: this.order.map((id) => this.players[id]).filter(Boolean).map((p) => [p.id, p.nickname, p.avatar, p.connected ? 1 : 0, p.role, p.kind]),
       diag: { connected, away: all.length - connected, medianRtt: rt.length ? rt[Math.floor(rt.length / 2)] : null },
+      top10: this.game ? this.topEntries(10) : [],
     };
   }
 
@@ -377,7 +426,6 @@ export class Room {
       config: { audience: this.config.audience, difficulty: this.config.difficulty, mode: this.config.mode, pace: this.config.pace },
       sound: this.sound, data: {},
     };
-    if (this.spotlight) view.spotlight = { at: this.spotlight.at, players: this.spotlight.ids.filter((i) => this.players[i]).map((i) => pub(this.players[i])) };
     const me = sub.playerId ? this.players[sub.playerId] : undefined;
     let controls: string[] = [];
     let hint = 'hint.lobby';
@@ -396,13 +444,16 @@ export class Room {
       if (sub.role === 'screen') {
         const rk = this.ranking();
         if (mv.showTop5) view.top5 = rk.ids.filter((id) => this.players[id] && (g.scores[id] ?? 0) > 0).slice(0, 5).map((id) => this.entry(id));
-        if (g.phase.name === END) view.podium = rk.ids.filter((id) => this.players[id]).slice(0, 3).map((id) => this.entry(id));
+        if (g.phase.name === END) {
+          view.podium = this.topEntries(3);
+          view.standings = this.topEntries(15);
+        }
       }
     }
     if (sub.role === 'player' && me) {
       const rk = this.ranking();
       const i = rk.idx.get(me.id);
-      const info: MyInfo = { ...pub(me), role: me.role, score: Math.max(0, Math.round(g?.scores?.[me.id] ?? 0)), rank: i === undefined || !g ? null : i + 1, of: rk.ids.length, rerolled: me.rerolled, spotlighted: !!this.spotlight?.ids.includes(me.id) };
+      const info: MyInfo = { ...pub(me), role: me.role, score: Math.max(0, Math.round(g?.scores?.[me.id] ?? 0)), rank: i === undefined || !g ? null : i + 1, of: rk.ids.length, rerolled: me.rerolled };
       view.me = info;
     }
     if (sub.role === 'mc') view.mc = this.mcInfo(hint, controls);
@@ -413,23 +464,30 @@ export class Room {
   toSnapshot(): Snapshot {
     return {
       v: 1, code: this.code, gameId: this.gameId, config: this.config, hostKeyHash: this.hostKeyHash, players: this.players, order: this.order, banned: [...this.banned], game: this.game,
-      rev: this.rev, rngState: this.rng.state, createdAt: this.createdAt, lastActivityAt: this.lastActivityAt, spotlight: this.spotlight, sound: this.sound, savedAt: this.now(),
+      rev: this.rev, rngState: this.rng.state, createdAt: this.createdAt, lastActivityAt: this.lastActivityAt, sound: this.sound, savedAt: this.now(),
+      closed: this.closed, closedAt: this.closedAt, historyRecorded: this.historyRecorded, rtts: this.rtts,
     };
   }
 
   static restore(s: Snapshot, opts: RoomOpts = {}): Room {
     const r = new Room(s.code, s.gameId, s.config, s.hostKeyHash, opts);
-    r.players = Object.fromEntries(Object.entries(s.players).map(([k, p]) => [k, { ...p, connected: false }]));
+    r.players = opts.live
+      ? Object.fromEntries(Object.entries(s.players).map(([k, p]) => [k, { ...p }]))
+      : Object.fromEntries(Object.entries(s.players).map(([k, p]) => [k, { ...p, connected: false }]));
     r.order = s.order;
     r.banned = new Set(s.banned);
     r.game = s.game;
-    r.rev = s.rev + 1;
+    r.rev = opts.live ? s.rev : s.rev + 1;
     r.rng.state = s.rngState;
     r.createdAt = s.createdAt;
-    r.lastActivityAt = r.now();
-    r.spotlight = s.spotlight;
+    r.lastActivityAt = opts.live ? s.lastActivityAt : r.now();
     r.sound = s.sound;
-    if (r.game && r.game.phase.endsAt != null && !r.game.phase.paused) {
+    if (opts.live) {
+      r.closed = !!s.closed;
+      r.closedAt = s.closedAt ?? 0;
+      r.historyRecorded = !!s.historyRecorded;
+      r.rtts = s.rtts ? { ...s.rtts } : {};
+    } else if (r.game && r.game.phase.endsAt != null && !r.game.phase.paused) {
       // Timers resume from the stored endsAt; if it already passed, wait for the MC to resume.
       if (r.game.phase.endsAt <= r.now()) r.game.phase = pausePhase({ ...r.game.phase, endsAt: r.now() }, r.now());
       else r.schedule();

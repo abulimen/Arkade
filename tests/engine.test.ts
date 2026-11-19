@@ -20,7 +20,9 @@ describe('scoring (PRD numbers)', () => {
     expect(scoreOrder(['e', 'd', 'c', 'b', 'a'], truth, 200, [0, 40000, 0])).toBe(160);
   });
   it('who am I points and wolf counts', () => {
-    expect([0, 1, 2, 3, 4].map(whoAmIPoints)).toEqual([500, 400, 300, 200, 100]);
+    expect([0, 1, 2, 3, 4].map((i) => whoAmIPoints(i))).toEqual([500, 400, 300, 200, 100]);
+    expect(whoAmIPoints(0, 100)).toBe(499);
+    expect(whoAmIPoints(0, 2300)).toBe(477);
     expect([4, 7, 8, 9, 10].map(wolfCount)).toEqual([1, 1, 2, 2, 3]);
   });
   it('keepCount and rankIds', () => {
@@ -39,6 +41,11 @@ describe('text', () => {
   it('wolf guesses: exact, alias, distance 1 over 5 letters only', () => {
     expect(guessMatches('noahs ark', "Noah's Ark", ['ark'])).toBe(true);
     expect(guessMatches('ARK', "Noah's Ark", ['ark', 'the ark'])).toBe(true);
+    expect(guessMatches('sling', 'Sling of David', ['five smooth stones'])).toBe(true);
+    expect(guessMatches("David's sling", 'Sling of David', ['five smooth stones'])).toBe(true);
+    expect(guessMatches('david', 'Sling of David', ['five smooth stones'])).toBe(false);
+    expect(guessMatches('staff of moses', "Moses' Staff")).toBe(true);
+    expect(guessMatches('staff', "Moses' Staff")).toBe(true);
     expect(guessMatches('Goliath', 'Goliath')).toBe(true);
     expect(guessMatches('Goliat', 'Goliath')).toBe(true);
     expect(guessMatches('Davis', 'David')).toBe(false); // 5 letters: no leniency

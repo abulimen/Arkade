@@ -9,7 +9,7 @@ import { diffsFor, pickPlan } from '../content';
 const LADDER: Difficulty[] = ['easy', 'easy', 'easy', 'medium', 'medium', 'medium', 'hard', 'hard'];
 const clueOf = (name: string) => (name.startsWith('clue') ? Number(name.slice(4)) - 1 : -1);
 
-interface Ans { choice: string; at: number; clueIndex: number; correct: boolean }
+interface Ans { choice: string; at: number; clueStartedAt: number; clueIndex: number; correct: boolean }
 export interface State extends GameStateBase {
   rounds: number;
   plan: WaiItem[];
@@ -33,7 +33,7 @@ function toReveal(s: State, ctx: GameCtx): State {
   let correctCount = 0;
   for (const [pid, a] of Object.entries(s.answers)) {
     if (!a.correct) continue;
-    gain[pid] = whoAmIPoints(a.clueIndex);
+    gain[pid] = whoAmIPoints(a.clueIndex, a.at - a.clueStartedAt);
     scores[pid] = (scores[pid] ?? 0) + gain[pid];
     correctCount++;
   }
@@ -81,7 +81,7 @@ export const whoAmI: GameModule<State> = {
       if (s.phase.endsAt != null && a.receivedAt > s.phase.endsAt) return fail(s, 'LATE');
       // clue index is read from the phase at server receive time, never from the client
       const correct = choice === subject(s).name;
-      const answers = { ...s.answers, [a.playerId]: { choice, at: a.receivedAt, clueIndex: ci, correct } };
+      const answers = { ...s.answers, [a.playerId]: { choice, at: a.receivedAt, clueStartedAt: s.phase.startedAt, clueIndex: ci, correct } };
       const scores = correct ? s.scores : { ...s.scores, [a.playerId]: Math.max(0, (s.scores[a.playerId] ?? 0) - WAI_PENALTY) };
       const next = { ...s, answers, scores };
       return ok(Object.keys(answers).length >= activeIds(ctx).length ? toReveal(next, ctx) : next);

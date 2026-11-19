@@ -1,181 +1,87 @@
 'use client';
+
 import { useEffect, useState } from 'react';
-import { GAME_META } from '@/shared/types';
-import type { PlayerPublic, View } from '@/shared/types';
+import { GAME_META, type GameId, type PlayerPublic, type View } from '@/shared/types';
 import { t } from '@/i18n';
 import type { Conn } from '@/client/channel';
-import { serverNow } from '@/client/clock';
-import { enableSound, soundReady } from '@/client/sound';
-import { Avatar } from '@/ui/avatars';
-import { Button, Confetti, PhaseBanner, Podium, RoomCodeCard, Stage, TimerRing, Top5, Waves, Wordmark, useStageMobile } from '@/ui/kit';
+import { Icon } from '@/ui/icons';
+import {
+  ConnectionPill,
+  PhaseBanner,
+  PlayerChip,
+  RoomCodeCard,
+  Stage,
+  TimerRing,
+  Top5,
+  Waves,
+  Wordmark,
+  useStageMobile,
+} from '@/ui/kit';
 import { MascotView } from '@/ui/mascots';
 import { QRPanel } from '@/ui/qr';
-import { ScreenUI } from '../games/registry';
-import { useCues } from './cues';
 import { phaseTitle } from '../player/PlayerRoot';
+import { useCues } from './cues';
+import { ResultsShow } from './ResultsShow';
+import type { ScreenProps } from '@/features/games/types';
+import SpotWolfScreen from '@/features/games/spot-the-wolf/Screen';
+import FakeVerseScreen from '@/features/games/fake-verse/Screen';
+import GideonsScreen from '@/features/games/gideons-300/Screen';
+import WcfScreen from '@/features/games/what-came-first/Screen';
+import WhoAmIScreen from '@/features/games/who-am-i/Screen';
 
-export interface RoomUrls { join: string; short: string }
+export interface RoomUrls {
+  join: string;
+  short: string;
+}
 
-function Spotlight({ s, mobile }: { s: NonNullable<View['spotlight']>; mobile: boolean }) {
-  const [spinning, setSpinning] = useState(serverNow() - s.at < 4500);
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    if (!spinning) return;
-    const a = setInterval(() => setI((x) => x + 1), 90);
-    const b = setTimeout(() => setSpinning(false), Math.max(0, 4500 - (serverNow() - s.at)));
-    return () => { clearInterval(a); clearTimeout(b); };
-  }, [spinning, s.at]);
-  const cur = s.players[i % Math.max(1, s.players.length)];
+const ScreenUI: Record<GameId, React.ComponentType<ScreenProps>> = {
+  'spot-the-wolf': SpotWolfScreen,
+  'fake-verse': FakeVerseScreen,
+  'gideons-300': GideonsScreen,
+  'what-came-first': WcfScreen,
+  'who-am-i': WhoAmIScreen,
+};
+
+export default function ScreenRoot({
+  view,
+  conn,
+  urls,
+  preview = false,
+}: {
+  view: View | null;
+  conn: Conn;
+  urls?: RoomUrls | null;
+  preview?: boolean;
+}) {
+  useCues(view, (view?.sound?.on ?? true) && !preview);
+
   return (
-    <div className={`${mobile ? 'fixed' : 'absolute'} inset-0 z-40 grid place-items-center bg-night/95 p-6`} role="alert" aria-label={t('lots.title')}>
-      <div className="flex flex-col items-center gap-6 text-center">
-        <h2 className="fs-h1 text-gold">{spinning ? t('lots.spinning') : t('lobby.front')}</h2>
-        {spinning && cur ? (
-          <div className={`flex flex-wrap items-center justify-center rounded-[28px] border-[5px] border-night bg-plank shadow-2xl ${mobile ? 'gap-4 px-6 py-5' : 'gap-8 px-12 py-8'}`}>
-            <Avatar avatar={cur.avatar} color={cur.color} size={mobile ? 96 : 180} />
-            <span className="fs-h1 text-night">{cur.nickname}</span>
-          </div>
-        ) : (
-          <ul className="flex max-w-[1600px] flex-wrap justify-center gap-6">
-            {s.players.map((p: PlayerPublic, k) => (
-              <li key={p.id} className="a-pop flex flex-col items-center gap-2" style={{ animationDelay: `${k * 400}ms` }}>
-                <Avatar avatar={p.avatar} color={p.color} size={mobile ? 88 : 160} />
-                <span className="fs-h2 text-white">{p.nickname}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+    <Stage fit={preview ? 'parent' : 'window'}>
+      <ScreenInner view={view} conn={conn} urls={urls} preview={preview} />
+    </Stage>
   );
 }
 
-function LobbyScreen({ view, urls, soundBtn }: { view: View; urls: RoomUrls | null; soundBtn: React.ReactNode }) {
-  const mobile = useStageMobile();
-  const players = (view.data.players ?? []) as PlayerPublic[];
-  const gameMeta = GAME_META[view.gameId];
-
-  if (mobile) {
-    return (
-      <div className="flex flex-col gap-5">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <Wordmark size={32} />
-          {soundBtn}
-        </header>
-        <div className="inline-flex items-center self-start gap-2.5 rounded-full border border-gold/40 bg-night-2/90 px-4 py-1.5">
-          <MascotView name={gameMeta.mascot} expression="happy" size={32} />
-          <span className="fs-body font-semibold text-gold">{gameMeta.name}</span>
-        </div>
-        <div className="arcade-card p-5 flex flex-col items-center gap-4 text-center">
-          <p className="fs-body text-cloud">{t('lobby.joinAt', { url: urls?.short ?? '…' })}</p>
-          <RoomCodeCard code={view.room} />
-          {urls && <QRPanel url={urls.join} size={200} />}
-        </div>
-        <div className="arcade-panel p-4">
-          <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="fs-h2 text-white">{t('lobby.boarding')}</h2>
-            <span className="fs-small font-semibold text-gold" aria-live="polite">{t('lobby.aboard', { n: view.count.total })}</span>
-          </div>
-          <ul className="flex flex-wrap gap-3">
-            {players.map((p) => (
-              <li key={p.id} className="flex flex-col items-center">
-                <Avatar avatar={p.avatar} color={p.color} size={48} />
-                <span className="max-w-[72px] truncate text-xs font-semibold text-white mt-1">{p.nickname}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative flex h-full w-full flex-col justify-between p-14 gap-6 overflow-hidden">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0">
-        <img
-          src="/imgs/showdown-hero.webp"
-          alt=""
-          className="h-full w-full object-cover opacity-[0.13]"
-          decoding="async"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-night/90 via-night/75 to-night" />
-      </div>
-      <header className="relative z-10 flex items-center justify-between gap-6 shrink-0">
-        <Wordmark size={60} />
-        <div className="flex items-center gap-4 ml-auto">
-          {soundBtn}
-          <div className="inline-flex items-center gap-3 rounded-full border-2 border-gold/40 bg-night-2/90 px-6 py-2">
-            <MascotView name={gameMeta.mascot} expression="happy" size={56} />
-            <span className="fs-h2 uppercase tracking-widest text-gold">{gameMeta.name}</span>
-          </div>
-        </div>
-      </header>
-
-      <section className="relative z-10 flex items-center justify-between gap-12 shrink-0">
-        <div className="flex flex-col items-start gap-5 min-w-0">
-          <p className="fs-h2 text-cloud">{t('lobby.joinAt', { url: urls?.short ?? '…' })}</p>
-          <RoomCodeCard code={view.room} big />
-        </div>
-        {urls && <QRPanel url={urls.join} size={340} />}
-        <MascotView name="arky" expression="happy" size={300} />
-      </section>
-
-      <section className="relative z-10 flex min-h-0 flex-1 flex-col justify-end pb-16">
-        <div className="mb-3 flex items-baseline justify-between gap-4">
-          <h2 className="fs-h1 text-white">{t('lobby.boarding')}</h2>
-          <span className="fs-h2 text-gold" aria-live="polite">{t('lobby.aboard', { n: view.count.total })}</span>
-        </div>
-        <ul className="flex min-h-[160px] flex-wrap content-start gap-x-4 gap-y-3 rounded-[28px] border-[5px] border-night bg-night-2/90 p-5 shadow-xl overflow-hidden">
-          {players.map((p, i) => (
-            <li key={p.id} className="a-pop flex flex-col items-center" style={{ animationDelay: `${Math.floor((i % 20) / 2) * 100}ms` }}>
-              <Avatar avatar={p.avatar} color={p.color} size={84} />
-              <span className="max-w-[120px] truncate fs-small font-semibold text-white mt-1">{p.nickname}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <Waves className="absolute inset-x-0 bottom-0 h-28 pointer-events-none" />
-    </div>
-  );
-}
-
-function ScreenContent({
+function ScreenInner({
   view,
   conn,
   urls,
   preview,
-  sound,
-  onEnableSound,
 }: {
   view: View | null;
   conn: Conn;
-  urls: RoomUrls | null;
-  preview?: boolean;
-  sound: boolean;
-  onEnableSound: () => void;
+  urls?: RoomUrls | null;
+  preview: boolean;
 }) {
   const mobile = useStageMobile();
-  const Game = view ? ScreenUI[view.gameId] : null;
 
-  const soundBtn =
-    !preview && !sound && view ? (
-      <Button
-        variant="secondary"
-        small={mobile}
-        onClick={onEnableSound}
-        className={mobile ? '' : '!min-h-[68px] !px-6 !text-[28px]'}
-      >
-        {t('sound.enable')}
-      </Button>
-    ) : null;
-
-  if (conn === 'closed' || view?.status === 'closed') {
+  if (conn === 'closed') {
     return (
-      <div className="grid h-full min-h-[70vh] place-items-center text-center p-8">
-        <div className="flex flex-col items-center gap-6">
-          <MascotView name="arky" expression="sleepy" size={mobile ? 180 : 320} />
-          <h1 className="fs-h1">{t('room.closed')}</h1>
-          <p className="fs-h2 text-gold">{t('end.great')}</p>
+      <div className="h-full w-full flex flex-col items-center justify-center gap-8 p-8 text-center">
+        <Wordmark size={mobile ? 38 : 64} />
+        <MascotView name="arky" expression="sleepy" size={mobile ? 120 : 210} animate decorative />
+        <div className="font-bold text-white" style={{ fontSize: mobile ? 24 : 52 }}>
+          {t('room.closed')}
         </div>
       </div>
     );
@@ -183,126 +89,221 @@ function ScreenContent({
 
   if (!view) {
     return (
-      <div className="grid h-full min-h-[70vh] place-items-center p-8">
-        <div className="flex flex-col items-center gap-6">
-          <MascotView name="olive" expression="fly" size={mobile ? 150 : 240} />
-          <p className="fs-h2">{t('common.loading')}</p>
+      <div className="h-full w-full flex flex-col items-center justify-center gap-6 p-8 text-center">
+        <Wordmark size={mobile ? 38 : 68} />
+        <MascotView name="olive" expression="happy" size={mobile ? 110 : 180} animate decorative />
+        <div className="font-semibold text-slate animate-pulse" style={{ fontSize: mobile ? 18 : 34 }}>
+          {t('common.loading')}
         </div>
       </div>
     );
   }
 
-  if (view.status === 'lobby') {
-    return (
-      <>
-        <LobbyScreen view={view} urls={urls} soundBtn={soundBtn} />
-        {view.spotlight && <Spotlight key={view.spotlight.at} s={view.spotlight} mobile={mobile} />}
-      </>
-    );
-  }
+  const meta = GAME_META[view.gameId];
 
-  if (view.phase === 'end') {
+  if (view.status === 'lobby') {
+    const players = ((view.data as { players?: PlayerPublic[] }).players ?? []);
+    const joinUrl =
+      urls?.join ?? (typeof window !== 'undefined' ? `${window.location.origin}/j/${view.room}` : `/j/${view.room}`);
+    const short = urls?.short ?? `/j/${view.room}`;
+
+    if (mobile) {
+      return (
+        <div className="min-h-full w-full p-5 space-y-5 flex flex-col">
+          <div className="flex items-center justify-between">
+            <Wordmark size={26} />
+            <ConnectionPill conn={conn} />
+          </div>
+          <div className="arcade-panel p-5 space-y-4 text-center">
+            <div className="text-xs font-bold uppercase tracking-widest text-gold">{meta.name}</div>
+            <h1 className="font-bold text-white text-xl">{meta.tagline}</h1>
+            <RoomCodeCard code={view.room} />
+            <div className="flex justify-center">
+              <QRPanel url={joinUrl} size={170} />
+            </div>
+            <div className="font-mono text-sm font-bold text-sky">{short}</div>
+          </div>
+          <div className="arcade-card p-4 space-y-3">
+            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate">
+              <span>{t('mc.players')}</span>
+              <span className="text-leaf">{view.count.total} joined</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {players.slice(0, 24).map((p) => (
+                <PlayerChip key={p.id} p={p} size={30} />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className={`relative flex ${mobile ? 'flex-col gap-6 py-8' : 'h-full flex-col justify-center gap-10 p-16'} items-center text-center`}>
-        {!mobile && <Confetti active />}
-        {soundBtn}
-        <h1 className="fs-h1 text-white">{t('end.thanks')}</h1>
-        {view.podium && <Podium entries={view.podium} big={!mobile} />}
-        <p className="fs-h2 text-gold">{t('end.great')}</p>
-        {!mobile && <Waves className="absolute inset-x-0 bottom-0 h-28" />}
-        {view.spotlight && <Spotlight key={view.spotlight.at} s={view.spotlight} mobile={mobile} />}
+      <div className="h-full w-full p-14 flex flex-col justify-between relative overflow-hidden">
+        <Waves className="opacity-55" />
+        {/* Top Broadcast Bar */}
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <Wordmark size={54} />
+            <span className="rounded-full border border-gold/45 bg-gold/15 px-6 py-2 text-[24px] font-bold uppercase tracking-widest text-gold">
+              {meta.name}
+            </span>
+          </div>
+          <ConnectionPill conn={conn} />
+        </div>
+
+        {/* Center Stage Split */}
+        <div className="relative z-10 grid grid-cols-[1.15fr_0.85fr] gap-12 items-center my-auto">
+          <div className="space-y-8">
+            <div className="space-y-3">
+              <div className="text-[22px] font-bold uppercase tracking-[0.2em] text-leaf">Join the Showtime Deck</div>
+              <h1 className="font-bold text-white text-[58px] leading-[1.08] tracking-tight max-w-3xl">
+                {meta.tagline}
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-10">
+              <QRPanel url={joinUrl} size={270} />
+              <div className="space-y-5">
+                <RoomCodeCard code={view.room} big />
+                <div className="rounded-2xl border border-white/15 bg-night-2/90 px-6 py-3 font-mono text-[26px] font-bold text-sky">
+                  {short}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center gap-4 text-[22px] font-bold uppercase tracking-widest text-slate">
+                <span>Live Crew</span>
+                <span className="rounded-full bg-leaf/20 border border-leaf/40 px-4 py-1 text-leaf">
+                  {view.count.connected} Ready
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-3 max-w-4xl">
+                {players.slice(0, 18).map((p) => (
+                  <PlayerChip key={p.id} p={p} big />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Mascot Spotlight Breakout */}
+          <div className="relative flex flex-col items-center justify-center">
+            <div
+              aria-hidden="true"
+              className="absolute h-[460px] w-[460px] rounded-full bg-gradient-to-br from-leaf/25 via-sky/15 to-gold/25 blur-3xl"
+            />
+            <div className="relative arcade-panel p-10 flex flex-col items-center gap-5 border-white/15 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.95)]">
+              <MascotView name={meta.mascot} expression="cheer" size={300} animate decorative />
+              <div className="text-center">
+                <div className="text-[22px] font-bold uppercase tracking-widest text-gold">Waiting for Host</div>
+                <div className="text-[26px] font-semibold text-cloud mt-1">
+                  {t('mc.minPlayers', { n: meta.minPlayers })} · {t('mc.minutes', { a: meta.est[0], b: meta.est[1] })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 flex items-center justify-between text-[22px] font-semibold text-slate">
+          <span>{t('common.noAccount')}</span>
+          <span>Arkade Broadcast Engine · 1080p</span>
+        </div>
       </div>
     );
   }
+
+  const ActiveScreen = ScreenUI[view.gameId];
+
+  if ((view.status === 'results' || view.phase === 'end') && view.gameId !== 'spot-the-wolf') {
+    const podiumKey = `${view.room}-${(view.podium ?? []).map((p) => p.id).join(',')}`;
+    return <ResultsShow key={podiumKey} view={view} gameName={meta.name} mobile={mobile} preview={preview} />;
+  }
+
+  const showTop5 = Boolean(view.top5?.length);
+  // Re-run the staged reveal only when the standings actually change, not on every phase tick.
+  const top5Key = `${view.round ?? 0}:${(view.top5 ?? []).map((e) => `${e.id}=${e.score}`).join('|')}`;
 
   if (mobile) {
     return (
-      <div className="flex flex-col gap-4">
-        <header className="flex flex-wrap items-center justify-between gap-2">
+      <div className="min-h-full w-full p-4 space-y-4 flex flex-col">
+        <div className="flex items-center justify-between gap-2">
+          <Wordmark size={24} />
           <PhaseBanner className="text-left !px-4 !py-1.5">{phaseTitle(view)}</PhaseBanner>
-          <div className="flex items-center gap-2 ml-auto">
-            {soundBtn}
-            <TimerRing endsAt={view.endsAt} pausedMs={view.pausedMs} size={56} />
-          </div>
-        </header>
-        <div className="flex flex-wrap items-center gap-2">
-          {view.round != null && (
-            <span className="fs-small font-semibold uppercase tracking-wider text-gold">
-              {t('screen.round', { n: view.round, total: view.rounds ?? '?' })}
-            </span>
-          )}
-          {view.status === 'paused' && (
-            <span className="fs-small rounded-full bg-warning px-3 py-0.5 text-night font-semibold">
-              {t('state.paused')}
-            </span>
-          )}
+          <TimerRing endsAt={view.endsAt} pausedMs={view.pausedMs} size={52} />
         </div>
-        {Game && (
-          <div className="arcade-card p-4">
-            <Game view={view} />
+
+        <div className="flex-1 flex flex-col justify-center">
+          <ActiveScreen view={view} preview={preview} />
+        </div>
+
+        {showTop5 && (
+          <div className="arcade-panel p-4 space-y-2.5">
+            <div className="text-xs font-bold uppercase tracking-widest text-gold">Gold League Top 5</div>
+            <Top5 key={top5Key} entries={view.top5!} suspense={!preview} endsAt={view.endsAt} />
           </div>
         )}
-        {view.top5 && view.top5.length > 0 && (
-          <aside className="arcade-panel p-4">
-            <h2 className="fs-h2 mb-3 text-gold">{t('score.top5')}</h2>
-            <Top5 entries={view.top5} />
-          </aside>
-        )}
-        {view.spotlight && <Spotlight key={view.spotlight.at} s={view.spotlight} mobile />}
-        {view.status === 'paused' && <div className="sr-only" role="status">{t('state.paused')}</div>}
       </div>
     );
   }
 
   return (
-    <div className="relative flex h-full w-full flex-col p-14 gap-5">
-      <header className="flex items-center gap-6 shrink-0">
-        <PhaseBanner className="shrink-0 !px-7 !py-3 !text-[42px] whitespace-nowrap">{phaseTitle(view)}</PhaseBanner>
-        {view.round != null && (
-          <span className="fs-h2 shrink-0 uppercase tracking-widest text-gold whitespace-nowrap">
-            {t('screen.round', { n: view.round, total: view.rounds ?? '?' })}
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-5 shrink-0">
-          {soundBtn}
-          {view.status === 'paused' && (
-            <span className="fs-h2 rounded-full bg-warning px-6 py-2 text-night font-semibold whitespace-nowrap">
-              {t('state.paused')}
-            </span>
+    <div className="h-full w-full p-12 flex flex-col justify-between relative overflow-hidden">
+      {/* Top Broadcast HUD */}
+      <div className="relative z-10 flex items-center justify-between gap-6">
+        <div className="flex items-center gap-5">
+          <Wordmark size={44} />
+          <div className="rounded-2xl border border-white/15 bg-night-2/90 px-5 py-2 font-mono font-bold tracking-[0.22em] text-gold text-[26px]">
+            {view.room}
+          </div>
+          {view.round != null && view.rounds != null && (
+            <div className="rounded-full border border-white/12 bg-night-3 px-5 py-2 text-[22px] font-semibold text-cloud tabular-nums">
+              {t('screen.round', { n: view.round, total: view.rounds })}
+            </div>
           )}
-          <TimerRing endsAt={view.endsAt} pausedMs={view.pausedMs} size={136} />
         </div>
-      </header>
-      <div className="flex min-h-0 flex-1 gap-8 overflow-hidden">
-        <div className="min-w-0 flex-1 overflow-hidden">{Game && <Game view={view} />}</div>
-        {view.top5 && view.top5.length > 0 && (
-          <aside className="w-[490px] flex-none rounded-[28px] border-2 border-white/15 bg-night-2/90 p-7 shadow-xl overflow-hidden">
-            <h2 className="fs-h2 mb-4 text-gold">{t('score.top5')}</h2>
-            <Top5 entries={view.top5} big />
+
+        <PhaseBanner className="shrink-0 !px-7 !py-3 !text-[42px] whitespace-nowrap">{phaseTitle(view)}</PhaseBanner>
+
+        <div className="flex items-center gap-4">
+          <ConnectionPill conn={conn} />
+          <TimerRing endsAt={view.endsAt} pausedMs={view.pausedMs} size={96} />
+        </div>
+      </div>
+
+      {/* Center Broadcast Canvas + Optional Right League Leaderboard Dock */}
+      <div
+        className={`relative z-10 flex-1 my-6 grid gap-10 items-center ${
+          showTop5 ? 'grid-cols-[1.38fr_0.62fr]' : 'grid-cols-1'
+        }`}
+      >
+        <div className="h-full flex flex-col justify-center min-w-0">
+          <ActiveScreen view={view} preview={preview} />
+        </div>
+
+        {showTop5 && (
+          <aside className="arcade-panel p-6 space-y-4 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.85)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[22px] font-bold uppercase tracking-widest text-gold">
+                <Icon n="trophy" size={24} /> <span>Gold League</span>
+              </div>
+              <span className="text-[18px] font-semibold text-slate">Top 5</span>
+            </div>
+            <Top5 key={top5Key} entries={view.top5!} big suspense={!preview} endsAt={view.endsAt} />
           </aside>
         )}
       </div>
-      {view.spotlight && <Spotlight key={view.spotlight.at} s={view.spotlight} mobile={false} />}
-      {view.status === 'paused' && <div className="sr-only" role="status">{t('state.paused')}</div>}
+
+      {view.status === 'paused' && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-black/70 backdrop-blur-md">
+          <div className="arcade-panel px-14 py-10 text-center space-y-4 a-pop">
+            <MascotView name="arky" expression="idle" size={140} decorative />
+            <div className="font-bold text-gold text-[48px]">Show Paused</div>
+            <p className="text-cloud text-[26px]">Resuming momentarily…</p>
+          </div>
+        </div>
+      )}
+
     </div>
-  );
-}
-
-export default function ScreenRoot({ view, conn, urls, preview }: { view: View | null; conn: Conn; urls: RoomUrls | null; preview?: boolean }) {
-  const [sound, setSound] = useState(false);
-  useEffect(() => setSound(soundReady()), []);
-  useCues(view, sound && !preview);
-
-  return (
-    <Stage fit={preview ? 'parent' : 'window'}>
-      <ScreenContent
-        view={view}
-        conn={conn}
-        urls={urls}
-        preview={preview}
-        sound={sound}
-        onEnableSound={() => setSound(enableSound())}
-      />
-    </Stage>
   );
 }

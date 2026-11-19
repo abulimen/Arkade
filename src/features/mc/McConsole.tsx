@@ -1,381 +1,608 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+
 import Link from 'next/link';
-import { GAME_META } from '@/shared/types';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { GAME_META, type GameId, type PlayerPublic, type View } from '@/shared/types';
 import { t } from '@/i18n';
-import { useChannel } from '@/client/channel';
-import { useMedia } from '@/client/hooks';
+import { useChannel, type Ack } from '@/client/channel';
 import { resolveUrls } from '@/client/urls';
-import { Avatar, animalName } from '@/ui/avatars';
-import { Button, ConnectionPill, TimerRing, Wordmark } from '@/ui/kit';
+import { useMedia } from '@/client/hooks';
+import { enableSound, haptic, playUi } from '@/client/sound';
+import { AppShell } from '@/ui/shell';
+import { Avatar } from '@/ui/avatars';
+import { Button, ConnectionPill, PhaseBanner, PlayerChip, TimerRing, Toast, ViewportModal, Wordmark } from '@/ui/kit';
 import { Icon } from '@/ui/icons';
-import { PwaInstallButton } from '@/ui/pwa';
-import { McUI } from '../games/registry';
-import ScreenRoot from '../screen/ScreenRoot';
-import type { RoomUrls } from '../screen/ScreenRoot';
-import { phaseTitle } from '../player/PlayerRoot';
+import { QRPanel } from '@/ui/qr';
+import ScreenRoot, { type RoomUrls } from '@/features/screen/ScreenRoot';
+import type { McProps } from '@/features/games/types';
+import SpotWolfMc from '@/features/games/spot-the-wolf/Mc';
+import FakeVerseMc from '@/features/games/fake-verse/Mc';
+import GideonsMc from '@/features/games/gideons-300/Mc';
+import WcfMc from '@/features/games/what-came-first/Mc';
+import WhoAmIMc from '@/features/games/who-am-i/Mc';
 
-function Card({ title, children, className = '' }: { title?: string; children: ReactNode; className?: string }) {
-  return (
-    <section className={`arcade-card p-4 sm:p-5 ${className}`}>
-      {title && <h2 className="fs-h2 mb-3 text-white">{title}</h2>}
-      {children}
-    </section>
-  );
-}
+const McUI: Record<GameId, React.ComponentType<McProps>> = {
+  'spot-the-wolf': SpotWolfMc,
+  'fake-verse': FakeVerseMc,
+  'gideons-300': GideonsMc,
+  'what-came-first': WcfMc,
+  'who-am-i': WhoAmIMc,
+};
 
-type MobileTab = 'stage' | 'players' | 'tools' | 'preview';
+const subscribeHostKey = (cb: () => void) => {
+  window.addEventListener('arkade-host-key', cb);
+  return () => window.removeEventListener('arkade-host-key', cb);
+};
 
 export default function McConsole({ code }: { code: string }) {
-  const [key, setKey] = useState<string | null | undefined>(undefined);
+  const [keyInput, setKeyInput] = useState('');
   const [urls, setUrls] = useState<RoomUrls | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [lots, setLots] = useState(3);
+  const [tab, setTab] = useState<'controls' | 'preview' | 'players'>('controls');
   const [stage, setStage] = useState<string[]>([]);
-  const [vol, setVol] = useState(70);
-  const [tab, setTab] = useState<MobileTab>('stage');
-  const [confirmModal, setConfirmModal] = useState<{ title: string; onConfirm: () => void } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<null | { kind: 'END' | 'CLOSE' | 'BAN'; id?: string; label: string }>(null);
   const wide = useMedia('(min-width: 1024px)');
-  const volTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const key = useSyncExternalStore(
+    subscribeHostKey,
+    () => {
+      const hash = window.location.hash;
+      const fromHash = hash.startsWith('#k=') ? hash.slice(3).trim() : '';
+      return fromHash || localStorage.getItem(`arkade:host:${code}`) || '';
+    },
+    () => '',
+  );
+
+  const notify = useCallback((msg: string) => {
+    setToast(msg);
+  }, []);
 
   useEffect(() => {
-    const h = window.location.hash.match(/k=([a-f0-9]+)/)?.[1];
-    if (h) localStorage.setItem(`arkade:host:${code}`, h);
-    setKey(h ?? localStorage.getItem(`arkade:host:${code}`));
-    fetch(`/api/rooms/${code}`).then((r) => r.json()).then((j) => setUrls(resolveUrls(j, code))).catch(() => undefined);
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  useEffect(() => {
+    const hash = window.location.hash;
+    const fromHash = hash.startsWith('#k=') ? hash.slice(3).trim() : '';
+    if (fromHash) {
+      localStorage.setItem(`arkade:host:${code}`, fromHash);
+      window.history.replaceState(null, '', window.location.pathname);
+      window.dispatchEvent(new Event('arkade-host-key'));
+    }
+    fetch(`/api/rooms/${code}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j) setUrls(resolveUrls(j, code));
+      })
+      .catch(() => undefined);
   }, [code]);
 
-  const mc = useChannel(key ? { code, role: 'mc', key } : null);
+  const ch = useChannel(key ? { code, role: 'mc', key } : null);
   const scr = useChannel(key && (wide || tab === 'preview') ? { code, role: 'screen' } : null);
-  const view = mc.view;
+  const view = ch.view;
 
-  const run = useCallback(async (type: string, payload?: unknown) => {
-    const r = await (mc.sendMc?.(type, payload) ?? Promise.resolve({ ok: false, error: 'OFFLINE' }));
-    if (!r.ok) { setMsg(t(`mc.err.${r.error}`) === `mc.err.${r.error}` ? t('err.generic') : t(`mc.err.${r.error}`)); setTimeout(() => setMsg(null), 3500); }
-    return r;
-  }, [mc]);
+  const run = useCallback(
+    async (type: string, payload?: unknown): Promise<Ack> => {
+      void enableSound();
+      if (!ch.sendMc) return { ok: false };
+      const ack = await ch.sendMc(type, payload);
+      if (!ack.ok) {
+        playUi('ui-error');
+        haptic('error');
+        notify(ack.error ? `${t('err.generic')} (${ack.error})` : t('err.generic'));
+      } else {
+        playUi('ui-snap');
+        haptic('snap');
+      }
+      return ack;
+    },
+    [ch, notify],
+  );
 
-  if (key === null) {
+  if (!key) {
     return (
-      <main className="grid min-h-dvh place-items-center p-6 text-center">
-        <div className="arcade-card p-6 max-w-md flex flex-col items-center gap-3">
-          <h1 className="fs-h1 text-white">{t('mc.noKey')}</h1>
-          <p className="fs-body text-cloud/85">{t('mc.noKeyBody')}</p>
-          <Link href="/mc" className="cursor-pointer rounded-2xl border-[3px] border-night bg-gold px-6 py-3 font-semibold text-night">
-            {t('mc.home')}
-          </Link>
+      <AppShell active="mc" maxWidth="max-w-md">
+        <div className="arcade-panel p-6 mt-6 space-y-4">
+          <Wordmark size={30} />
+          <h1 className="font-semibold text-white fs-h2">Host Authorization Required</h1>
+          <p className="text-sm text-slate">
+            Paste the room host key or launch a fresh Showtime room from the Host Deck.
+          </p>
+          <input
+            type="text"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            placeholder="Host Key"
+            className="arcade-input font-mono"
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              className="flex-1"
+              disabled={!keyInput.trim()}
+              onClick={() => {
+                const k = keyInput.trim();
+                localStorage.setItem(`arkade:host:${code}`, k);
+                window.dispatchEvent(new Event('arkade-host-key'));
+              }}
+            >
+              Connect Deck
+            </Button>
+            <Link
+              href="/mc"
+              className="cursor-pointer inline-flex items-center justify-center rounded-full border border-white/15 bg-night-3 px-5 min-h-14 text-sm font-semibold text-cloud hover:text-white"
+            >
+              Back
+            </Link>
+          </div>
         </div>
-      </main>
+      </AppShell>
     );
   }
-  if (mc.conn === 'closed' || view?.status === 'closed') {
+
+  if (ch.conn === 'closed') {
     return (
-      <main className="grid min-h-dvh place-items-center p-6 text-center">
-        <div className="arcade-card p-6 max-w-md flex flex-col items-center gap-3">
-          <h1 className="fs-h1 text-white">{t('room.closed')}</h1>
-          <Link href="/mc" className="cursor-pointer rounded-2xl border-[3px] border-night bg-gold px-6 py-3 font-semibold text-night">
-            {t('mc.newRoom')}
+      <AppShell active="mc" maxWidth="max-w-lg">
+        <div className="arcade-panel p-8 mt-8 text-center space-y-4">
+          <Wordmark size={34} />
+          <h1 className="font-semibold text-white fs-h2">{t('room.closed')}</h1>
+          <Link
+            href="/mc"
+            className="cursor-pointer inline-flex items-center justify-center rounded-full bg-gold px-6 min-h-14 font-semibold text-night"
+          >
+            {t('mc.create')}
           </Link>
         </div>
-      </main>
+      </AppShell>
     );
   }
+
   if (!view || !view.mc) {
     return (
-      <main className="grid min-h-dvh place-items-center">
-        <p className="fs-body" role="status">{t('common.loading')}</p>
-      </main>
+      <AppShell active="mc" maxWidth="max-w-lg">
+        <div className="arcade-panel p-8 mt-8 text-center space-y-4">
+          <Wordmark size={32} />
+          <p className="text-slate font-medium animate-pulse">{t('common.loading')}</p>
+        </div>
+      </AppShell>
     );
   }
 
   const info = view.mc;
-  const Panel = McUI[view.gameId];
-  const lobby = view.status === 'lobby';
-  const playing = view.status === 'playing';
-  const paused = view.status === 'paused';
-  const results = view.status === 'results';
+  const meta = GAME_META[view.gameId];
+  const need = meta.minPlayers;
   const wolf = view.gameId === 'spot-the-wolf';
-  const players = info.players;
-  const need = GAME_META[view.gameId].minPlayers;
-  const label = (id: string, children: ReactNode, onClick: () => void, o: { v?: 'primary' | 'secondary' | 'danger' | 'ghost'; off?: boolean } = {}) => (
-    <Button key={id} variant={o.v ?? 'secondary'} small disabled={o.off} onClick={onClick} className="!px-3 !text-sm whitespace-nowrap">{children}</Button>
-  );
+  const stageOk = !wolf || stage.length === 0 || (stage.length >= need && stage.length <= 10);
+  const canStart = wolf ? (stage.length > 0 ? stageOk : view.count.connected >= need) : view.count.connected >= need;
+  const activeMc = McUI[view.gameId];
+  const ActiveMc = activeMc;
+  const joinUrl = urls?.join ?? `/j/${code}`;
+  const shortUrl = urls?.short ?? `/j/${code}`;
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(joinUrl);
+      playUi('ui-snap');
+      haptic('snap');
+      notify(`Copied ${shortUrl}`);
+    } catch {
+      notify(shortUrl);
+    }
+  };
+
+  const toggleStage = (id: string) => {
+    playUi('ui-focus');
+    haptic('tick');
+    setStage((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < 10 ? [...prev, id] : prev));
+  };
+
+  const lobbyPlayers = ((view.data as { players?: PlayerPublic[] }).players ?? []);
 
   return (
-    <div className="min-h-dvh pb-24 lg:pb-8">
-      <header className="sticky top-0 z-30 glass-hud border-b border-white/15 px-3 sm:px-4 py-2.5">
-        <div className="mx-auto max-w-7xl flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Link href="/mc" className="cursor-pointer shrink-0">
-              <Wordmark size={26} />
-            </Link>
-            <span className="rounded-full border border-coral/40 bg-coral/15 px-2 py-0.5 text-xs font-semibold text-coral shrink-0">
-              {t('mc.badge')}
-            </span>
-            <span className="hidden sm:inline-flex rounded-full bg-night-3 border border-white/15 px-3 py-1 fs-small font-semibold text-gold shrink-0">
-              {t('mc.roomLine', { code, n: view.count.total })}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 ml-auto">
-            <span className="sm:hidden rounded-full bg-night-3 border border-white/15 px-2.5 py-1 text-xs font-semibold text-gold">
-              {code} · {view.count.total}
-            </span>
-            <PwaInstallButton app="mc" label="Install" />
-            <ConnectionPill conn={mc.conn} />
-          </div>
-        </div>
-      </header>
+    <AppShell active="mc" maxWidth="max-w-7xl">
+      <Toast text={toast} />
 
-      {msg && (
-        <p role="alert" className="mx-4 mt-3 rounded-2xl border-2 border-night bg-coral px-4 py-2.5 fs-body font-semibold text-night">
-          {msg}
-        </p>
-      )}
-
-      <div className="mx-auto max-w-7xl grid gap-4 p-4 lg:grid-cols-2">
-        {/* Left Column: Transport Deck + Active Mobile Tab / Desktop Stack */}
-        <div className="flex flex-col gap-4">
-          <Card>
-            <div className="flex items-center gap-4">
-              <div className="min-w-0 flex-1">
-                <p className="fs-small font-semibold uppercase tracking-wider text-gold">{GAME_META[view.gameId].name}</p>
-                <h1 className="fs-h1 text-white mt-0.5">
-                  {lobby ? t('mc.lobbyNow') : `${t('mc.now')}: ${view.round ? t('mc.roundLine', { n: view.round }) + ' · ' : ''}${phaseTitle(view)}`}
-                </h1>
-                <p className="mt-1.5 fs-body text-cloud/90">
-                  <span className="font-semibold text-gold">{t('mc.hint')}:</span> {t(info.hint)}
-                </p>
+      <div className="space-y-4">
+        {/* Top Console Telemetry Strip */}
+        <header className="glass-hud rounded-3xl p-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border border-gold/40 bg-gold/15 px-3.5 py-1.5 text-center">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-gold">Room</div>
+              <div className="font-bold text-white tracking-[0.22em] text-lg leading-none">{code}</div>
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-semibold text-white text-base sm:text-lg leading-tight">{meta.name}</h1>
+                <ConnectionPill conn={ch.conn} />
               </div>
-              {!lobby && <TimerRing endsAt={view.endsAt} pausedMs={view.pausedMs} size={88} />}
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate mt-0.5 tabular-nums">
+                <span>
+                  <strong className="text-leaf">{info.diag.connected}</strong> online · {info.diag.away} away · {view.count.total} total
+                </span>
+                {info.diag.medianRtt != null && <span>RTT {info.diag.medianRtt} ms</span>}
+                {view.round != null && view.rounds != null && (
+                  <span className="text-gold font-semibold">
+                    {t('screen.round', { n: view.round, total: view.rounds })}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" small onClick={copyLink}>
+              <Icon n="share" size={16} />
+              <span>Copy Link</span>
+            </Button>
+            <a
+              href={`/screen/${code}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => {
+                playUi('ui-snap');
+                haptic('snap');
+              }}
+              className="relative hidden lg:inline-flex cursor-pointer press console-sheen items-center gap-2 rounded-full border border-sky/35 bg-sky/15 px-4 min-h-12 text-sm font-semibold text-sky hover:bg-sky/25 transition-colors whitespace-nowrap"
+            >
+              <Icon n="tv" size={16} />
+              <span>Projector</span>
+            </a>
+          </div>
+        </header>
+
+        {/* Mobile View Switcher */}
+        <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-white/10 bg-night-2 p-1.5 lg:hidden">
+          {(['controls', 'preview', 'players'] as const).map((tb) => (
+            <button
+              key={tb}
+              type="button"
+              onClick={() => {
+                playUi('ui-focus');
+                haptic('tick');
+                setTab(tb);
+              }}
+              className={`cursor-pointer rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider transition-all ${
+                tab === tb ? 'bg-gold text-night shadow' : 'text-slate hover:text-white'
+              }`}
+            >
+              {tb === 'controls' ? 'Director' : tb === 'preview' ? 'Stage' : `Players (${view.count.total})`}
+            </button>
+          ))}
+        </div>
+
+        {/* Main Split Broadcast Deck */}
+        <div className="grid gap-5 lg:grid-cols-[1.15fr_0.95fr] items-start">
+          {/* Director Column */}
+          <div className={`space-y-4 ${tab !== 'controls' ? 'hidden lg:block' : ''}`}>
+            {/* Active Phase & Host Teleprompter */}
+            <section className="arcade-panel p-5 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <PhaseBanner>{view.status === 'lobby' ? 'Lobby Staging' : view.status === 'paused' ? 'Show Paused' : view.phase}</PhaseBanner>
+                <TimerRing endsAt={view.endsAt} pausedMs={view.pausedMs} size={64} />
+              </div>
+
+              {/* Host Teleprompter */}
+              <div className="rounded-2xl border border-leaf/30 bg-night-3/90 p-4 space-y-1">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-leaf">
+                  <Icon n="info" size={13} /> Host Teleprompter
+                </div>
+                <p className="text-sm sm:text-base text-cloud leading-relaxed">{t(info.hint)}</p>
+              </div>
+
+              {/* Lobby Join QR & Stage Picker */}
+              {view.status === 'lobby' && (
+                <div className="space-y-4 pt-1">
+                  <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-night-3/70 p-4">
+                    <QRPanel url={joinUrl} size={110} />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="text-xs font-bold uppercase tracking-widest text-slate">Quick Join URL</div>
+                      <div className="font-mono text-sm font-bold text-gold break-all">{shortUrl}</div>
+                      <p className="text-xs text-slate">
+                        Minimum {need} connected player{need === 1 ? '' : 's'} to launch.
+                      </p>
+                    </div>
+                  </div>
+
+                  {wolf && lobbyPlayers.length > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-night-3/70 p-4 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-widest text-gold">
+                          Wolf Stage Cast ({stage.length ? `${stage.length} selected` : 'Auto / All'})
+                        </span>
+                        {stage.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setStage([])}
+                            className="cursor-pointer text-xs font-semibold text-sky hover:underline"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {lobbyPlayers.map((p) => {
+                          const picked = stage.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => toggleStage(p.id)}
+                              className={`cursor-pointer transition-all rounded-full ${
+                                picked ? 'ring-2 ring-gold scale-105' : 'opacity-80 hover:opacity-100'
+                              }`}
+                            >
+                              <PlayerChip p={p} size={30} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    disabled={!canStart}
+                    onClick={() => run('START', wolf && stage.length ? { stage } : undefined)}
+                  >
+                    <Icon n="play" size={18} />
+                    <span>{canStart ? 'Launch Match' : `Need ${need} Players (${view.count.connected}/${need})`}</span>
+                  </Button>
+                </div>
+              )}
+
+              {/* Active Game-Specific MC Panel */}
+              {view.status !== 'lobby' && view.status !== 'results' && (
+                <div className="pt-1">
+                  <ActiveMc view={view} mc={run} />
+                </div>
+              )}
+
+              {/* Transport Deck */}
+              {view.status !== 'lobby' && (
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-white/10">
+                  {view.status === 'paused' ? (
+                    <Button variant="primary" small onClick={() => run('RESUME')}>
+                      <Icon n="play" size={16} /> <span>{t('mc.resume')}</span>
+                    </Button>
+                  ) : view.status === 'playing' ? (
+                    <Button variant="secondary" small onClick={() => run('PAUSE')}>
+                      <Icon n="pause" size={16} /> <span>Pause</span>
+                    </Button>
+                  ) : null}
+
+                  {view.status === 'playing' && (
+                    <>
+                      <Button variant="ghost" small onClick={() => run('ADD_TIME', { seconds: 15 })}>
+                        <Icon n="plus" size={16} /> <span>+15s</span>
+                      </Button>
+                      <Button variant="ghost" small onClick={() => run('SKIP')}>
+                        <Icon n="skip" size={16} /> <span>Skip</span>
+                      </Button>
+                    </>
+                  )}
+
+                  {info.controls.includes('next') && (
+                    <Button variant="primary" small onClick={() => run('NEXT')}>
+                      <Icon n="arrowRight" size={16} /> <span>Next</span>
+                    </Button>
+                  )}
+
+                  {info.controls.includes('reask') && (
+                    <Button variant="secondary" small onClick={() => run('REASK')}>
+                      <Icon n="dice" size={16} /> <span>Re-ask</span>
+                    </Button>
+                  )}
+
+                  {view.status !== 'results' && (
+                    <Button
+                      variant="danger"
+                      small
+                      onClick={() => setConfirmAction({ kind: 'END', label: 'End current game and reveal podium?' })}
+                    >
+                      <Icon n="stop" size={16} /> <span>End Game</span>
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    small
+                    onClick={() => setConfirmAction({ kind: 'CLOSE', label: 'Close this room for all players and projectors?' })}
+                  >
+                    <Icon n="cross" size={16} /> <span>Close Room</span>
+                  </Button>
+                </div>
+              )}
+            </section>
+
+            {/* Projector Sound Console */}
+            <section className="arcade-card p-5">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky">
+                    <Icon n={view.sound.on ? 'volume' : 'volumeoff'} size={15} /> Projector Audio
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => run('SOUND', { on: !view.sound.on })}
+                    className={`cursor-pointer rounded-full px-3 py-1 text-xs font-bold border transition-colors ${
+                      view.sound.on ? 'border-leaf/40 bg-leaf/15 text-leaf' : 'border-white/15 bg-night-3 text-slate'
+                    }`}
+                  >
+                    {view.sound.on ? 'ON' : 'MUTED'}
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    aria-label="Projector audio volume"
+                    min={0}
+                    max={100}
+                    value={Math.round(view.sound.volume * 100)}
+                    onChange={(e) => void run('SOUND', { volume: Number(e.target.value) / 100 })}
+                    className="w-full accent-sky cursor-pointer"
+                  />
+                  <span className="w-10 text-right text-xs font-bold tabular-nums text-cloud">
+                    {Math.round(view.sound.volume * 100)}%
+                  </span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* Right Column: Live 16:9 Stage Preview + Player Roster */}
+          <div className="space-y-4">
+            <div className={`space-y-2 ${tab !== 'preview' ? 'hidden lg:block' : ''}`}>
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold uppercase tracking-widest text-slate">Live Projector Mirror</span>
+                <a href={`/screen/${code}`} target="_blank" rel="noreferrer" className="hidden lg:inline text-xs font-semibold text-sky hover:underline">
+                  Open Fullscreen
+                </a>
+              </div>
+              <div className="aspect-video w-full overflow-hidden rounded-3xl border border-white/15 bg-night shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]">
+                <ScreenRoot view={scr?.view ?? null} conn={scr?.conn ?? 'connecting'} urls={urls ?? undefined} preview />
+              </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3" role="group" aria-label={t('mc.controls')}>
-              {lobby && label('start', <><Icon n="play" />{t('mc.start')}</>, () => void run('START', wolf && stage.length ? { stage } : undefined), { v: 'primary', off: wolf ? stage.length > 0 && (stage.length < need || stage.length > 10) : view.count.connected < need })}
-              {(playing || paused) && (paused ? label('resume', <><Icon n="play" />{t('mc.resume')}</>, () => void run('RESUME'), { v: 'primary' }) : label('pause', <><Icon n="pause" />{t('mc.pause')}</>, () => void run('PAUSE')))}
-              {(playing || paused) && label('skip', <><Icon n="skip" />{t('mc.skip')}</>, () => void run('SKIP'))}
-              {(playing || paused) && label('time', <><Icon n="plus" />{t('mc.addTime')}</>, () => void run('ADD_TIME', { seconds: 15 }))}
-              {info.controls.includes('next') && label('next', <><Icon n="skip" />{t('mc.next')}</>, () => void run('NEXT'))}
-              {info.controls.includes('reask') && label('reask', <><Icon n="plus" />{t('mc.reask')}</>, () => void run('REASK'))}
-              {!results && label('end', <><Icon n="stop" />{t('mc.end')}</>, () => setConfirmModal({ title: t('mc.endConfirm'), onConfirm: () => void run('END') }), { v: 'danger' })}
-              {(results || lobby) && label('close', <><Icon n="cross" />{t('mc.close')}</>, () => void run('CLOSE'), { v: 'danger' })}
-            </div>
-            {lobby && view.count.connected < need && !wolf && (
-              <p className="mt-3 rounded-xl bg-warning/15 border border-warning/40 px-3 py-2 fs-small font-semibold text-warning" role="status">
-                {t('mc.needPlayers', { n: need })}
-              </p>
+            {view.gameId !== 'spot-the-wolf' && info.top10 && info.top10.length > 0 && (
+              <section className={`arcade-card p-5 space-y-3 ${tab !== 'players' && tab !== 'controls' ? 'hidden lg:block' : ''}`}>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-gold flex items-center gap-1.5">
+                    <Icon n="trophy" size={14} /> Top 10 Standings
+                  </h2>
+                  <span className="text-xs text-slate font-semibold">{info.top10.length} ranked</span>
+                </div>
+                <ol className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  {info.top10.map((entry, idx) => (
+                    <li
+                      key={entry.id}
+                      className={`flex items-center justify-between gap-2.5 rounded-xl border px-3 py-2 text-sm ${
+                        idx === 0
+                          ? 'border-gold/45 bg-gold/10'
+                          : idx < 3
+                            ? 'border-leaf/30 bg-leaf/8'
+                            : 'border-white/8 bg-night-3/70'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className={`w-6 text-xs font-bold tabular-nums ${
+                            idx === 0 ? 'text-gold' : idx === 1 ? 'text-sky' : idx === 2 ? 'text-plank' : 'text-cloud/65'
+                          }`}
+                        >
+                          #{idx + 1}
+                        </span>
+                        <Avatar avatar={entry.avatar} color={entry.color} size={28} />
+                        <span className="truncate font-semibold text-white">{entry.nickname}</span>
+                      </div>
+                      <span className="shrink-0 font-bold text-gold tabular-nums text-xs">{entry.score} pts</span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
             )}
-          </Card>
 
-          {(wide || tab === 'stage') && !lobby && <Panel view={view} mc={run} />}
-
-          {(wide || tab === 'tools') && (
-            <>
-              <Card title={t('mc.lots')}>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 fs-body">
-                    <span>{t('mc.lotsN')}</span>
-                    <div className="inline-flex items-center rounded-xl border-2 border-white/15 bg-night-3 p-1">
+            <section className={`arcade-card p-5 space-y-3 ${tab !== 'players' ? 'hidden lg:block' : ''}`}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-slate">
+                  Passengers ({info.players.length})
+                </h2>
+                <span className="text-xs text-leaf font-semibold">{info.diag.connected} active</span>
+              </div>
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {info.players.length === 0 && (
+                  <p className="text-sm text-slate py-4 text-center">Waiting for passengers to join room {code}…</p>
+                )}
+                {info.players.map(([id, nick, av, on, role, kind]) => (
+                  <div
+                    key={id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-night-3/70 px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${on ? 'bg-leaf shadow-[0_0_8px_#38EC82]' : 'bg-slate/40'}`}
+                        aria-hidden="true"
+                      />
+                      <Avatar avatar={av} color={av % 6} size={32} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-white">{nick}</div>
+                        <div className="text-[11px] text-slate flex items-center gap-1.5">
+                          {kind === 'team' && <span className="text-sky font-semibold">Team</span>}
+                          {role && <span className="text-gold font-semibold uppercase">{role}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setLots((n) => Math.max(1, n - 1))}
-                        aria-label="Decrease lots count"
-                        className="cursor-pointer grid h-9 w-9 place-items-center rounded-lg hover:bg-white/10"
+                        onClick={() => run('KICK', { playerId: id })}
+                        title="Kick player"
+                        className="cursor-pointer rounded-xl border border-white/10 bg-night-2 px-2.5 py-1.5 text-xs font-semibold text-slate hover:text-white hover:border-white/25"
                       >
-                        <Icon n="minus" size={16} />
+                        Kick
                       </button>
-                      <span className="w-9 text-center font-semibold text-gold tabular-nums">{lots}</span>
                       <button
                         type="button"
-                        onClick={() => setLots((n) => Math.min(50, n + 1))}
-                        aria-label="Increase lots count"
-                        className="cursor-pointer grid h-9 w-9 place-items-center rounded-lg hover:bg-white/10"
+                        onClick={() => setConfirmAction({ kind: 'BAN', id, label: `Ban ${nick} from rejoining room ${code}?` })}
+                        title="Ban player"
+                        className="cursor-pointer rounded-xl border border-coral/30 bg-coral/10 px-2.5 py-1.5 text-xs font-semibold text-coral hover:bg-coral/20"
                       >
-                        <Icon n="plus" size={16} />
+                        Ban
                       </button>
                     </div>
                   </div>
-                  {label('lots', <><Icon n="dice" />{t('mc.castLots')}</>, () => void run('CAST_LOTS', { n: lots }))}
-                  {view.spotlight && label('clear', <><Icon n="cross" />{t('mc.clearLots')}</>, () => void run('CLEAR_LOTS'), { v: 'ghost' })}
-                </div>
-                {view.spotlight && <p className="mt-2 fs-small font-semibold text-leaf" role="status">{t('mc.chosen', { names: view.spotlight.players.map((p) => p.nickname).join(', ') })}</p>}
-                {wolf && lobby && <p className="mt-2 fs-small text-cloud/80">{t('mc.wolfStageHint')}</p>}
-              </Card>
-
-              <Card title={t('mc.sound')}>
-                <div className="flex flex-wrap items-center gap-3">
-                  {label('snd', <><Icon n={view.sound.on ? 'volume' : 'volumeoff'} />{view.sound.on ? t('mc.soundOn') : t('mc.soundOff')}</>, () => void run('SOUND', { on: !view.sound.on }))}
-                  <div className="flex items-center gap-1.5" role="group" aria-label={t('mc.volume')}>
-                    <span className="fs-small text-cloud/80 mr-1">{t('mc.volume')}</span>
-                    {[25, 50, 75, 100].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => {
-                          setVol(preset);
-                          clearTimeout(volTimer.current);
-                          volTimer.current = setTimeout(() => void run('SOUND', { volume: preset / 100 }), 100);
-                        }}
-                        className={`cursor-pointer rounded-xl px-3 py-2 text-xs font-semibold border transition ${
-                          Math.abs(vol - preset) <= 12
-                            ? 'bg-gold text-night border-night'
-                            : 'bg-night-3 text-cloud border-white/15'
-                        }`}
-                      >
-                        {preset}%
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </Card>
-            </>
-          )}
-        </div>
-
-        {/* Right Column */}
-        <div className="flex flex-col gap-4">
-          {(wide || tab === 'preview') && (
-            <Card title={t('mc.preview')}>
-              <ScreenRoot view={scr.view} conn={scr.conn} urls={urls} preview />
-            </Card>
-          )}
-
-          {(wide || tab === 'stage' || tab === 'tools') && (
-            <Card title={t('mc.share')}>
-              <div className="flex flex-col gap-3 fs-body">
-                <div className="min-w-0 rounded-xl bg-night/60 border border-white/10 px-3.5 py-2.5 text-sm">
-                  <span className="text-cloud/75">{t('mc.joinUrl')}: </span>
-                  <span className="font-semibold text-gold break-words">{urls?.short ?? '…'}</span>
-                </div>
-                <a
-                  className="cursor-pointer inline-flex items-center justify-center gap-2 rounded-xl border border-sky/40 bg-sky/15 px-4 py-2.5 text-sm font-semibold text-sky hover:bg-sky/25"
-                  href={`/screen/${code}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Icon n="tv" size={16} />
-                  <span>{t('mc.openScreen')}</span>
-                </a>
-              </div>
-            </Card>
-          )}
-
-          {(wide || tab === 'players' || (tab === 'stage' && lobby)) && (
-            <Card title={`${t('mc.players')} (${view.count.connected}/${view.count.total})`}>
-              <p className="mb-3 fs-small text-cloud/80" role="status">
-                {t('mc.diag', { c: info.diag.connected, a: info.diag.away, ms: info.diag.medianRtt ?? '–' })}
-              </p>
-              <ul className="max-h-96 divide-y divide-white/10 overflow-y-auto" aria-label={t('mc.players')}>
-                {players.map(([id, nick, av, on, role, kind]) => (
-                  <li key={id} className="flex items-center gap-2.5 py-2" style={{ contentVisibility: 'auto', containIntrinsicSize: '56px' }}>
-                    {wolf && lobby && (
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={stage.includes(id)}
-                        aria-label={t('mc.onStage', { name: nick })}
-                        onClick={() => setStage((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}
-                        className={`cursor-pointer grid h-8 w-8 place-items-center rounded-lg border-2 font-bold ${
-                          stage.includes(id) ? 'border-gold bg-gold text-night' : 'border-white/25 bg-night-3 text-transparent'
-                        }`}
-                      >
-                        ✓
-                      </button>
-                    )}
-                    <Avatar avatar={av} color={0} size={36} label={animalName(av)} />
-                    <span className="min-w-0 flex-1 truncate fs-body font-semibold text-white">
-                      {nick}{kind === 'team' ? ' ⬢' : ''}{role === 'spectator' ? ` (${t('mc.spectator')})` : ''}
-                    </span>
-                    <span className="flex items-center gap-1 fs-small">
-                      <Icon n={on ? 'wifi' : 'wifioff'} size={16} style={{ color: on ? '#2ED573' : '#FFA502' }} />
-                      <span className="hidden sm:inline">{on ? t('conn.connected') : t('mc.away')}</span>
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={t('mc.kick', { name: nick })}
-                      onClick={() => void run('KICK', { playerId: id })}
-                      className="cursor-pointer grid h-11 w-11 place-items-center rounded-xl bg-night-3 border border-white/15 hover:bg-white/15"
-                    >
-                      <Icon n="kick" size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={t('mc.ban', { name: nick })}
-                      onClick={() => setConfirmModal({ title: t('mc.banConfirm', { name: nick }), onConfirm: () => void run('BAN', { playerId: id }) })}
-                      className="cursor-pointer grid h-11 w-11 place-items-center rounded-xl bg-coral text-night font-semibold"
-                    >
-                      <Icon n="stop" size={18} />
-                    </button>
-                  </li>
                 ))}
-                {players.length === 0 && <li className="py-4 fs-body text-cloud/75 text-center">{t('mc.noPlayers')}</li>}
-              </ul>
-            </Card>
-          )}
+              </div>
+            </section>
+          </div>
         </div>
       </div>
 
-      {/* Mobile Tab Bar for MC Console */}
-      {!wide && (
-        <nav
-          aria-label="MC Console Sections"
-          className="fixed bottom-0 inset-x-0 z-40 glass-hud border-t border-white/15 lg:hidden"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
-          <div className="grid grid-cols-4 h-16 max-w-md mx-auto px-2">
-            {(
-              [
-                { id: 'stage', label: 'Stage', icon: 'sparkle' },
-                { id: 'players', label: `Players (${view.count.total})`, icon: 'users' },
-                { id: 'tools', label: 'Lots & Sound', icon: 'dice' },
-                { id: 'preview', label: 'Preview', icon: 'tv' },
-              ] as const
-            ).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setTab(item.id)}
-                className={`cursor-pointer flex flex-col items-center justify-center gap-1 rounded-xl my-1 transition ${
-                  tab === item.id ? 'bg-gold/15 text-gold' : 'text-cloud/70'
-                }`}
+      {/* Custom In-App Confirmation Sheet (zero native confirm()) */}
+      <ViewportModal
+        open={Boolean(confirmAction)}
+        onClose={() => {
+          playUi('ui-back');
+          setConfirmAction(null);
+        }}
+        ariaLabel="Confirm action"
+        maxWidth="max-w-sm"
+      >
+        {confirmAction && (
+          <div className="arcade-panel w-full p-6 space-y-4">
+            <h2 className="font-semibold text-white fs-h3">Confirm Broadcast Action</h2>
+            <p className="text-sm text-cloud">{confirmAction.label}</p>
+            <div className="flex gap-2.5 pt-2">
+              <Button
+                variant="ghost"
+                small
+                className="flex-1"
+                onClick={() => {
+                  playUi('ui-back');
+                  setConfirmAction(null);
+                }}
               >
-                <Icon n={item.icon} size={19} />
-                <span className="text-[11px] font-semibold leading-none">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </nav>
-      )}
-
-      {/* Custom Tactile Confirmation Sheet (Replaces window.confirm) */}
-      {confirmModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-4"
-          onClick={() => setConfirmModal(null)}
-        >
-          <div className="arcade-card w-full max-w-sm p-6 space-y-5 a-pop text-center" onClick={(e) => e.stopPropagation()}>
-            <h3 className="fs-h2 text-white">{confirmModal.title}</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="ghost" small onClick={() => setConfirmModal(null)}>
                 Cancel
               </Button>
               <Button
                 variant="danger"
                 small
-                onClick={() => {
-                  const fn = confirmModal.onConfirm;
-                  setConfirmModal(null);
-                  fn();
+                className="flex-1"
+                onClick={async () => {
+                  const act = confirmAction;
+                  setConfirmAction(null);
+                  if (act.kind === 'BAN' && act.id) await run('BAN', { playerId: act.id });
+                  else await run(act.kind);
                 }}
               >
                 Confirm
               </Button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </ViewportModal>
+    </AppShell>
   );
 }

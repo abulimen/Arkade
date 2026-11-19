@@ -2,7 +2,7 @@ import type { G3Item } from '@/shared/schemas';
 import type { Difficulty } from '@/shared/types';
 import { END, fail, mkPhase, ok, pubOf, sec } from '../engine/kit';
 import type { GameCtx, GameModule, GameStateBase, ModView } from '../engine/kit';
-import { G_CORRECT, G_POINT, G_SPEED, G_TARGET, G_WATCHMAN, G_WINNER, keepCount, rankIds, speedBonus } from '../engine/scoring';
+import { G_CORRECT, G_POINT, G_SPEED, G_TARGET, G_WATCHMAN, G_WINNER, keepCount, rankIds, tenthsPenalty } from '../engine/scoring';
 import { diffsFor, pickPlan } from '../content';
 
 const S1: Difficulty[] = ['easy', 'easy', 'easy', 'medium', 'medium', 'medium'];
@@ -49,7 +49,7 @@ function scoreQ(s: State, ctx: GameCtx): State {
   const gain: Record<string, number> = {};
   for (const pid of s.alive) {
     const a = s.answers[pid];
-    const g = a && a.choice === q.correct ? G_CORRECT + speedBonus(G_SPEED, start, end, a.at) : 0;
+    const g = a && a.choice === q.correct ? G_CORRECT + Math.max(0, G_SPEED - tenthsPenalty(start, a.at, G_SPEED)) : 0;
     gain[pid] = g;
     scores[pid] = (scores[pid] ?? 0) + g;
     totalMs[pid] = (totalMs[pid] ?? 0) + (a ? Math.min(Math.max(a.at - start, 0), end - start) : end - start);

@@ -11,8 +11,10 @@ const LADDER: Difficulty[] = ['easy', 'easy', 'medium', 'medium', 'medium', 'har
 interface Opt { id: string; text: string; kind: 'truth' | 'lie' | 'decoy'; authors: string[] }
 interface Result {
   truth: string; ref: string; verse: string; correct: number;
-  fakes: { text: string; authors: string[]; votes: number; kind: 'lie' | 'decoy' }[];
+  fakes: { text: string; authors: string[]; votes: number; points: number; kind: 'lie' | 'decoy' }[];
   gain: Record<string, number>;
+  foolGain: Record<string, number>;
+  fooledCount: Record<string, number>;
 }
 export interface State extends GameStateBase {
   rounds: number;
@@ -58,6 +60,8 @@ function toVote(s: State, ctx: GameCtx): State {
 function toReveal(s: State, ctx: GameCtx): State {
   const it = item(s);
   const gain: Record<string, number> = {};
+  const foolGain: Record<string, number> = {};
+  const fooledCount: Record<string, number> = {};
   const tally: Record<string, number> = {};
   let correct = 0;
   for (const [voter, optId] of Object.entries(s.votes)) {
@@ -69,16 +73,24 @@ function toReveal(s: State, ctx: GameCtx): State {
       gain[voter] = (gain[voter] ?? 0) + FV_TRUTH * s.multiplier;
     } else if (o.kind === 'lie') {
       const share = Math.floor((FV_PER_VOTE * s.multiplier) / o.authors.length);
-      for (const a of o.authors) gain[a] = (gain[a] ?? 0) + share;
+      for (const a of o.authors) {
+        gain[a] = (gain[a] ?? 0) + share;
+        foolGain[a] = (foolGain[a] ?? 0) + share;
+        fooledCount[a] = (fooledCount[a] ?? 0) + 1;
+      }
     }
   }
   const scores = { ...s.scores };
   for (const [pid, g] of Object.entries(gain)) scores[pid] = (scores[pid] ?? 0) + g;
   const fakes = s.options
     .filter((o) => o.kind !== 'truth')
-    .map((o) => ({ text: o.text, authors: o.kind === 'decoy' ? ['Arkade'] : o.authors.map((a) => nick(ctx, a)), votes: tally[o.id] ?? 0, kind: o.kind as 'lie' | 'decoy' }))
+    .map((o) => {
+      const votes = tally[o.id] ?? 0;
+      const points = o.kind === 'lie' ? votes * Math.floor((FV_PER_VOTE * s.multiplier) / Math.max(1, o.authors.length)) * o.authors.length : 0;
+      return { text: o.text, authors: o.kind === 'decoy' ? ['Arkade'] : o.authors.map((a) => nick(ctx, a)), votes, points, kind: o.kind as 'lie' | 'decoy' };
+    })
     .sort((a, b) => b.votes - a.votes || (a.text < b.text ? -1 : 1));
-  const result: Result = { truth: it.truth, ref: it.ref, verse: it.verse, correct, fakes, gain };
+  const result: Result = { truth: it.truth, ref: it.ref, verse: it.verse, correct, fakes, gain, foolGain, fooledCount };
   return { ...s, scores, result, phase: mkPhase('reveal', ctx.now(), sec(ctx, 30)) };
 }
 
@@ -152,7 +164,7 @@ export const fakeVerse: GameModule<State> = {
       const p = s.phase.name;
       const data: Record<string, unknown> = { ...pub(s), submitted: !!s.lies[pid], voted: s.votes[pid] ?? null };
       if (p === 'vote') data.options = s.options.filter((o) => !o.authors.includes(pid)).map((o) => ({ id: o.id, text: o.text }));
-      if (p === 'reveal' && s.result) data.result = { truth: s.result.truth, ref: s.result.ref, verse: s.result.verse, correct: s.result.correct, fakes: s.result.fakes, gain: s.result.gain[pid] ?? 0, pickedTruth: s.options.find((o) => o.id === s.votes[pid])?.kind === 'truth' };
+      if (p === 'reveal' && s.result) data.result = { truth: s.result.truth, ref: s.result.ref, verse: s.result.verse, correct: s.result.correct, fakes: s.result.fakes, gain: s.result.gain[pid] ?? 0, foolGain: s.result.foolGain[pid] ?? 0, fooledCount: s.result.fooledCount[pid] ?? 0, pickedTruth: s.options.find((o) => o.id === s.votes[pid])?.kind === 'truth' };
       return { ...base(s), data };
     },
     mc(s, ctx) {

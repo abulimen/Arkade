@@ -1,113 +1,167 @@
 'use client';
+
 import { t } from '@/i18n';
-import { useStageMobile } from '@/ui/kit';
-import { MascotView } from '@/ui/mascots';
+import { Icon } from '@/ui/icons';
+import { AnswerButton, useStageMobile } from '@/ui/kit';
 import type { ScreenProps } from '../types';
 import { Progress, ScrollCard, Verse } from '../shared';
 
-export default function FvScreen({ view }: ScreenProps) {
+interface FakeVerseScreenData {
+  mult?: number;
+  text: string;
+  submitted?: number;
+  voted?: number;
+  total: number;
+  options?: { id: string; text: string; by?: string[] }[];
+  result?: {
+    truth: string;
+    ref: string;
+    verse: string;
+    correct: number;
+    fakes: { text: string; authors: string[]; votes: number; points: number }[];
+  };
+}
+
+export default function FakeVerseScreen({ view }: ScreenProps) {
   const mobile = useStageMobile();
-  const d = view.data;
-  const dbl = d.mult === 2 && (
-    <span className={`${mobile ? 'fs-small px-3 py-1' : 'fs-h2 px-8 py-2'} rounded-full bg-violet font-semibold text-night`}>
-      {t('fv.double')}
-    </span>
-  );
-  const prompt = (
-    <ScrollCard className="a-slide">
-      <p className={`${mobile ? 'fs-h2' : 'fs-h1'} leading-tight`}>{d.text}</p>
-    </ScrollCard>
+  const d = view.data as FakeVerseScreenData;
+  const p = view.phase;
+
+  const multBadge = d.mult === 2 && (
+    <div
+      className="inline-flex items-center gap-2 rounded-full bg-gold font-extrabold uppercase tracking-widest text-night shadow"
+      style={{ padding: mobile ? '4px 12px' : '8px 22px', fontSize: mobile ? 12 : 22 }}
+    >
+      <Icon n="sparkle" size={mobile ? 14 : 24} /> {t('fv.double')}
+    </div>
   );
 
-  if (view.phase === 'reveal' && d.result) {
-    const r = d.result;
-    if (mobile) {
-      return (
-        <div className="flex flex-col gap-4">
-          <p className="fs-body text-cloud">{d.text}</p>
-          <div className="rounded-2xl border-2 border-night bg-leaf px-4 py-3 text-night flex flex-col gap-1">
-            <span className="fs-h2 font-semibold">{t('fv.truth')}: {r.truth.toUpperCase()}</span>
-            <span className="fs-small">{r.ref} · {t('fv.gotItRight', { n: r.correct })}</span>
-          </div>
-          <ul className="flex flex-col gap-2">
-            {r.fakes.slice(0, 5).map((f: { text: string; authors: string[]; votes: number }, i: number) => (
-              <li key={i} className="rounded-xl bg-night-3 px-3 py-2 flex items-center justify-between gap-2">
-                <span className="min-w-0 flex-1 truncate fs-small text-white">“{f.text.toUpperCase()}” <span className="text-cloud/75">{t('fv.by', { name: f.authors.join(' & ') })}</span></span>
-                <span className="shrink-0 fs-small font-semibold text-gold">{t('fv.fooledN', { n: f.votes })}</span>
-              </li>
-            ))}
-          </ul>
-          <Verse text={r.verse} refText={r.ref} />
-        </div>
-      );
-    }
-
+  if (p === 'prompt' || p === 'write') {
     return (
-      <div className="flex h-full flex-col gap-4 overflow-hidden">
-        <p className="fs-body text-cloud truncate">{d.text}</p>
-        <div className="a-pop flex items-center gap-6 rounded-[24px] border-[5px] border-night bg-leaf px-8 py-4 text-night shrink-0">
-          <span className="fs-h2 font-semibold truncate">{t('fv.truth')}: {r.truth.toUpperCase()}</span>
-          <span className="fs-body shrink-0">({r.ref})</span>
-          <span className="fs-body ml-auto shrink-0 rounded-full bg-night px-5 py-1 text-white">{t('fv.gotItRight', { n: r.correct })}</span>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="font-bold text-slate" style={{ fontSize: mobile ? 15 : 28 }}>
+            {p === 'prompt' ? t('fv.screenPrompt') : t('fv.screenWrite')}
+          </div>
+          {multBadge}
         </div>
-        <ul className="flex flex-col gap-2.5 min-h-0 flex-1 justify-center">
-          {r.fakes.slice(0, 5).map((f: { text: string; authors: string[]; votes: number }, i: number) => (
-            <li key={i} className="a-drop flex items-center gap-5 min-w-0" style={{ animationDelay: `${900 + i * 500}ms` }}>
-              <span className="fs-body min-w-0 flex-1 truncate text-white">
-                “{f.text.toUpperCase()}” <span className="fs-small text-cloud/80">{t('fv.by', { name: f.authors.join(' & ') })}</span>
-              </span>
-              <span className="fs-small w-[190px] flex-none text-right font-semibold text-gold">{t('fv.fooledN', { n: f.votes })}</span>
-              <span className="h-7 flex-none rounded-full bg-tangerine" style={{ width: `${Math.max(2, f.votes) * 32}px`, maxWidth: 260 }} />
-            </li>
+
+        <ScrollCard big={!mobile}>
+          {d.text.split('____').map((part, i, arr) => (
+            <span key={i}>
+              {part}
+              {i < arr.length - 1 && (
+                <span className="inline-block min-w-28 border-b-4 border-indigo px-3 mx-1 font-extrabold text-indigo">
+                  ______
+                </span>
+              )}
+            </span>
           ))}
-        </ul>
-        <div className="mt-auto flex items-end gap-6 shrink-0">
-          <div className="a-fade min-w-0 flex-1 rounded-2xl border border-white/15 bg-night-2/80 px-6 py-3" style={{ animationDelay: '2200ms' }}>
-            <Verse text={r.verse} refText={r.ref} compact big />
-          </div>
-          <div className="shrink-0 pb-12">
-            <MascotView name="fenn" expression="proud" size={180} />
-          </div>
-        </div>
+        </ScrollCard>
+
+        {p === 'write' && (
+          <Progress
+            n={d.submitted ?? 0}
+            total={d.total}
+            label={t('screen.submitted', { n: d.submitted ?? 0, total: d.total })}
+            big={!mobile}
+          />
+        )}
       </div>
     );
   }
 
-  if (view.phase === 'vote') {
-    const opts: { id: string; text: string }[] = d.options ?? [];
+  if (p === 'vote') {
+    const opts = d.options ?? [];
     return (
-      <div className="flex h-full flex-col gap-5">
-        <p className={`${mobile ? 'fs-body' : 'fs-h2'} text-cloud`}>{d.text}</p>
-        <ul className={`grid flex-1 ${mobile ? 'grid-cols-1 gap-2.5' : 'grid-cols-2 gap-4'} content-start`}>
-          {opts.map((o, i) => (
-            <li
-              key={o.id}
-              className={`a-pop flex items-center gap-4 rounded-[22px] border-[4px] border-night bg-night-3 chunky ${mobile ? 'px-4 py-2.5' : 'px-6 py-3.5'}`}
-              style={{ animationDelay: `${i * 90}ms` }}
-            >
-              <span className={`grid flex-none place-items-center rounded-full bg-gold fs-body font-bold text-night ${mobile ? 'h-9 w-9' : 'h-[56px] w-[56px]'}`} aria-hidden="true">
-                {'ABCDEFGHIJK'[i]}
-              </span>
-              <span className={`${mobile ? 'fs-body' : 'fs-h2'} truncate text-white`}>{o.text.toUpperCase()}</span>
-            </li>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-bold text-white" style={{ fontSize: mobile ? 22 : 42 }}>
+            {t('fv.pickTruth')}
+          </h2>
+          {multBadge}
+        </div>
+
+        <div className={mobile ? 'grid gap-2.5' : 'grid grid-cols-2 gap-4'}>
+          {opts.map((o, idx) => (
+            <AnswerButton key={o.id} index={idx} big={!mobile} tone={false}>
+              {o.text}
+            </AnswerButton>
           ))}
-        </ul>
-        <Progress n={d.voted} total={d.total} label={t('screen.voted', { n: d.voted, total: d.total })} />
+        </div>
+
+        <Progress
+          n={d.voted ?? 0}
+          total={d.total}
+          label={t('screen.voted', { n: d.voted ?? 0, total: d.total })}
+          big={!mobile}
+        />
+      </div>
+    );
+  }
+
+  const res = d.result;
+  if (!res) {
+    return (
+      <div className="arcade-panel p-8 text-center">
+        <h2 className="font-bold text-sky" style={{ fontSize: mobile ? 22 : 42 }}>
+          {t('ph.end')}
+        </h2>
       </div>
     );
   }
 
   return (
-    <div className={`flex h-full flex-col ${mobile ? 'gap-5' : 'gap-8'}`}>
-      <div className="flex flex-wrap items-center gap-4">
-        <h1 className={mobile ? 'fs-h2 text-white' : 'fs-h1'}>{view.phase === 'prompt' ? t('fv.screenPrompt') : t('fv.screenWrite')}</h1>
-        {dbl}
+    <div className="space-y-6 a-pop">
+      <div className="arcade-panel border-leaf/50 bg-leaf/12 p-6 sm:p-8 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-widest text-leaf">{t('fv.truth')}</div>
+          <div className="font-bold text-white mt-1" style={{ fontSize: mobile ? 24 : 48 }}>
+            {res.truth}
+          </div>
+        </div>
+        <span
+          className="rounded-full bg-leaf px-4 py-1.5 font-extrabold text-night"
+          style={{ fontSize: mobile ? 13 : 22 }}
+        >
+          {t('fv.gotItRight', { n: res.correct })}
+        </span>
       </div>
-      <div className={`flex flex-1 items-center ${mobile ? 'flex-col gap-4' : 'gap-10'}`}>
-        <div className="min-w-0 flex-1 w-full">{prompt}</div>
-        <MascotView name="fenn" expression={view.phase === 'write' ? 'writing' : 'scheming'} size={mobile ? 140 : 320} />
-      </div>
-      {view.phase === 'write' && <Progress n={d.submitted} total={d.total} label={t('screen.submitted', { n: d.submitted, total: d.total })} />}
+
+      <Verse verse={res.verse} refText={res.ref} big={!mobile} />
+
+      {res.fakes.length > 0 && (
+        <div className={mobile ? 'grid gap-2.5' : 'grid grid-cols-2 gap-4'}>
+          {res.fakes.slice(0, 4).map((f, idx) => (
+            <div key={idx} className="arcade-card p-4 sm:p-5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-bold text-white truncate" style={{ fontSize: mobile ? 16 : 24 }}>
+                  “{f.text}”
+                </div>
+                <div className="text-slate" style={{ fontSize: mobile ? 12 : 18 }}>
+                  {t('fv.by', { name: f.authors.join(', ') })}
+                </div>
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                <span
+                  className="rounded-full bg-gold px-3 py-1 font-extrabold text-night"
+                  style={{ fontSize: mobile ? 12 : 20 }}
+                >
+                  {t('fv.fooledN', { n: f.votes })}
+                </span>
+                {f.points > 0 && (
+                  <span
+                    className="font-extrabold text-gold"
+                    style={{ fontSize: mobile ? 12 : 18 }}
+                  >
+                    +{f.points} pts
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -44,7 +44,7 @@ export interface GameMeta {
 export const GAME_META: Record<GameId, GameMeta> = {
   'spot-the-wolf': { name: 'Spot the Wolf', tagline: 'Find the wolf in the flock', minPlayers: 4, modes: ['individual'], est: [12, 15], mascot: 'wilf', lateJoin: 'spectate' },
   'fake-verse': { name: 'Fake Verse', tagline: 'Fool your friends, find the truth', minPlayers: 3, modes: ['individual'], est: [12, 14], mascot: 'fenn', lateJoin: 'play' },
-  'gideons-300': { name: "Gideon's 300", tagline: 'Only the brave remain', minPlayers: 2, modes: ['individual'], est: [13, 15], mascot: 'jari', lateJoin: 'spectate' },
+  'gideons-300': { name: 'Battle Royale', tagline: 'Only the brave remain', minPlayers: 2, modes: ['individual'], est: [13, 15], mascot: 'jari', lateJoin: 'spectate' },
   'what-came-first': { name: 'What Came First?', tagline: 'Put the story in order', minPlayers: 1, modes: ['individual', 'team'], est: [10, 12], mascot: 'tilly', lateJoin: 'play' },
   'who-am-i': { name: 'Who Am I?', tagline: 'Guess from the clues', minPlayers: 1, modes: ['individual', 'team'], est: [10, 12], mascot: 'cami', lateJoin: 'play' },
 };
@@ -52,6 +52,7 @@ export const GAME_META: Record<GameId, GameMeta> = {
 export const RAINBOW = ['#FF5C6C', '#FF9A3D', '#3DD68C', '#3DB8FF', '#6C5CE7', '#B15CFF'] as const;
 export const SHAPES = ['circle', 'square', 'triangle', 'diamond', 'star', 'hexagon'] as const;
 export const AVATAR_NAMES = ['lamb', 'lion', 'camel', 'elephant', 'giraffe', 'zebra', 'donkey', 'ox', 'goat', 'ram', 'bear', 'deer', 'rabbit', 'hedgehog', 'turtle', 'owl', 'frog', 'fish', 'dove', 'duck', 'mouse', 'fox', 'cat', 'dog'] as const;
+export const AVATAR_COUNT = 300;
 export const ROOM_LETTERS = 'BCDFHJKMNPRSTVWXZ';
 
 export interface Phase {
@@ -76,6 +77,7 @@ export interface Player extends PlayerPublic {
   connected: boolean;
   rerolled: boolean;
   joinedAt: number;
+  lastSeenAt?: number;
 }
 
 export interface MyInfo extends PlayerPublic {
@@ -84,7 +86,6 @@ export interface MyInfo extends PlayerPublic {
   rank: number | null;
   of: number;
   rerolled: boolean;
-  spotlighted: boolean;
 }
 
 export interface RankEntry extends PlayerPublic {
@@ -96,6 +97,20 @@ export interface McInfo {
   controls: string[];
   players: [string, string, number, number, string, string][]; // id, nickname, avatar, connected, role, kind
   diag: { connected: number; away: number; medianRtt: number | null; rooms?: number };
+  top10?: RankEntry[];
+}
+
+export interface GameHistoryEntry {
+  id: string;
+  code: string;
+  gameId: GameId;
+  gameName: string;
+  audience: Audience;
+  mode: Mode;
+  startedAt: number;
+  endedAt: number;
+  playerCount: number;
+  top10: RankEntry[];
 }
 
 /** One envelope for every surface. `data` is game/phase specific and already projected for the audience. */
@@ -114,7 +129,7 @@ export interface View {
   me?: MyInfo;
   top5?: RankEntry[];
   podium?: RankEntry[];
-  spotlight?: { at: number; players: PlayerPublic[] } | null;
+  standings?: RankEntry[];
   sound: { on: boolean; volume: number };
   mc?: McInfo;
   data: any; // eslint-disable-line @typescript-eslint/no-explicit-any

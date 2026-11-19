@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-// Crisp 24x24 game-show stroke icons: 2.2 px stroke, round caps and joins.
+// Crisp 24x24 console stroke icons: 2.2px stroke, round caps and joins.
 const P = {
   check: 'M20 6 9 17l-5-5',
   cross: 'M18 6 6 18M6 6l12 12',
@@ -33,6 +33,17 @@ const P = {
   info: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 9v5m0-8h.01',
   arrowRight: 'M5 12h14m-6-6 6 6-6 6',
   phone: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm5 16h.01',
+  crown: 'M3 18h18M4 15l2-9 6 5 6-5 2 9z',
+  flame: 'M12 2c2 4 6 6 6 11a6 6 0 1 1-12 0c0-3 1.5-5.5 3-7 0 2 1 3 2 3 0-3 1-5 1-7z',
+  bolt: 'M13 2 4 14h7l-1 8 10-12h-7z',
+  bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3',
+  sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
+  chevronUp: 'M18 15l-6-6-6 6',
+  chevronLeft: 'M15 18l-6-6 6-6',
+  chevronRight: 'M9 18l6-6-6-6',
+  star: 'M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.3-6.2 3.3 1.2-6.8-5-4.9 6.9-1z',
+  trophy: 'M8 21h8M12 17v4M7 4h10v6a5 5 0 0 1-10 0zM7 6H4v3a3 3 0 0 0 3 3M17 6h3v3a3 3 0 0 1-3 3',
 } as const;
 export type IconName = keyof typeof P;
 
@@ -56,18 +67,18 @@ const SHAPE_D: Record<(typeof SHAPE_NAMES)[number], string> = {
 /** Shape badge: teams and answer buttons never rely on colour alone. */
 export function Shape({ n, size = 24, className }: { n: number; size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="#14123B" strokeWidth={2} strokeLinejoin="round" className={className} aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="#0C0E14" strokeWidth={2} strokeLinejoin="round" className={className} aria-hidden="true">
       <path d={SHAPE_D[SHAPE_NAMES[((n % 6) + 6) % 6]]} />
     </svg>
   );
 }
 
-/** Olive leaf: the points icon (three sculpted leaves with golden vein accent). */
+/** Olive leaf: the points emblem. */
 export function OliveLeaf({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 21c5-2 9-7 11-14" stroke="#25A868" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-      <path d="M14 7c4-1 7 1 8 3-3 2-7 2-8-3zM8 14c-1-4 1-7 4-8 1 4-1 7-4 8zM6 18c-3 0-5-2-5-4 3-1 5 1 5 4z" fill="#3DD68C" stroke="#14123B" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M3 21c5-2 9-7 11-14" stroke="#22B864" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+      <path d="M14 7c4-1 7 1 8 3-3 2-7 2-8-3zM8 14c-1-4 1-7 4-8 1 4-1 7-4 8zM6 18c-3 0-5-2-5-4 3-1 5 1 5 4z" fill="#38EC82" stroke="#0C0E14" strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
   );
 }

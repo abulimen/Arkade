@@ -1,93 +1,110 @@
 'use client';
+
 import { RAINBOW } from '@/shared/types';
 import { t } from '@/i18n';
 import { useStageMobile } from '@/ui/kit';
 import { MascotView } from '@/ui/mascots';
 import type { ScreenProps } from '../types';
-import { Verse } from '../shared';
+import { Pips, Verse } from '../shared';
 
-export default function WaiScreen({ view }: ScreenProps) {
+interface WaiScreenData {
+  clues: string[];
+  clueIndex: number;
+  reveal?: number;
+  color: number;
+  locked: number;
+  total: number;
+  result?: {
+    name: string;
+    ref: string;
+    story: string;
+    verse: string;
+    correctCount: number;
+  };
+}
+
+export default function WhoAmIScreen({ view }: ScreenProps) {
   const mobile = useStageMobile();
-  const d = view.data;
-  const r = d.result;
-  const clues: string[] = d.clues ?? [];
+  const d = view.data as WaiScreenData;
+  const p = view.phase;
+  const camiColor = RAINBOW[((d.color ?? 0) % RAINBOW.length + RAINBOW.length) % RAINBOW.length];
 
-  if (mobile) {
+  if (p === 'reveal' && d.result) {
+    const r = d.result;
     return (
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-3 rounded-2xl bg-night-3/60 p-3">
-          <MascotView name="cami" expression={r ? 'proud' : 'curious'} size={96} reveal={d.reveal} color={RAINBOW[d.color]} />
-          <div className="min-w-0 flex-1">
-            {r ? (
-              <>
-                <h1 className="fs-h1 text-gold">{r.name}</h1>
-                <p className="fs-small text-cloud/90">{t('wai.gotItN', { n: r.correctCount })} · {r.ref}</p>
-              </>
-            ) : (
-              <h1 className="fs-h2 text-white">{t('wai.who')}</h1>
-            )}
-            <p className="mt-1 inline-block rounded-full bg-night-2 px-3 py-0.5 fs-small text-gold" role="status">
-              {t('screen.lockedIn', { n: d.locked })}
-            </p>
+      <div className="space-y-6 a-pop">
+        <div className="arcade-panel p-6 sm:p-10 flex flex-wrap items-center justify-between gap-6">
+          <div className="flex items-center gap-5 min-w-0">
+            <div className="rounded-3xl border border-leaf/40 bg-leaf/12 p-3 shrink-0">
+              <MascotView name="cami" expression="cheer" size={mobile ? 74 : 130} reveal={1} color={camiColor} animate decorative />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold uppercase tracking-widest text-leaf">{t('wai.answerWas')}</div>
+              <h2 className="font-bold text-white leading-tight" style={{ fontSize: mobile ? 26 : 54 }}>
+                {r.name}
+              </h2>
+            </div>
           </div>
+          <span
+            className="rounded-full bg-leaf px-5 py-1.5 font-extrabold text-night"
+            style={{ fontSize: mobile ? 13 : 22 }}
+          >
+            {t('wai.gotItN', { n: r.correctCount })}
+          </span>
         </div>
-        {r ? (
-          <div className="flex flex-col gap-3">
-            <p className="fs-body text-cloud">{r.story}</p>
-            <Verse text={r.verse} refText={r.ref} />
-          </div>
-        ) : (
-          <ol className="flex flex-col gap-2" aria-label={t('wai.clues')}>
-            {clues.map((c, i) => (
-              <li
-                key={i}
-                className={`a-drop rounded-2xl border-2 border-night px-4 py-2.5 fs-body ${
-                  i === clues.length - 1 ? 'bg-gold font-semibold text-night' : 'bg-night-3 text-white'
-                }`}
-              >
-                <span className="mr-2 font-bold">{i + 1}.</span>{c}
-              </li>
-            ))}
-          </ol>
-        )}
+
+        <div className="arcade-card p-5 sm:p-7">
+          <p className="text-cloud leading-relaxed" style={{ fontSize: mobile ? 15 : 28 }}>
+            {r.story}
+          </p>
+        </div>
+
+        <Verse verse={r.verse} refText={r.ref} big={!mobile} />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full items-center gap-10 overflow-hidden">
-      <div className="flex w-[400px] flex-none flex-col items-center justify-center gap-5">
-        <MascotView name="cami" expression={r ? 'proud' : 'curious'} size={380} reveal={d.reveal} color={RAINBOW[d.color]} />
-        <p className="fs-body rounded-full bg-night-3 px-7 py-2 font-semibold text-white" role="status">{t('screen.lockedIn', { n: d.locked })}</p>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-4 overflow-hidden">
-        {r ? (
-          <>
-            <h1 className="a-pop font-semibold leading-none text-gold" style={{ fontSize: r.name.length > 14 ? '68px' : '92px' }}>{r.name}</h1>
-            <p className="fs-body text-cloud">{t('wai.gotItN', { n: r.correctCount })} · <span className="text-gold">{r.ref}</span></p>
-            <p className="a-fade fs-body leading-snug text-white" style={{ animationDelay: '600ms' }}>{r.story}</p>
-            <div className="a-fade rounded-2xl border border-white/15 bg-night-2/80 px-6 py-4" style={{ animationDelay: '1100ms' }}>
-              <Verse text={r.verse} refText={r.ref} compact big />
+    <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-[0.42fr_1fr] items-center">
+        <div className="arcade-panel p-6 flex flex-col items-center gap-4 text-center">
+          <MascotView
+            name="cami"
+            expression="happy"
+            size={mobile ? 120 : 230}
+            reveal={d.reveal ?? 0.2}
+            color={camiColor}
+            animate
+            decorative
+          />
+          <div className="rounded-full border border-gold/45 bg-gold/15 px-4 py-1 font-bold text-gold" style={{ fontSize: mobile ? 13 : 22 }}>
+            {t('wai.clueCount', { n: Math.max(1, (d.clueIndex ?? 0) + 1) })}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {(d.clues ?? []).map((cl, i) => (
+            <div
+              key={i}
+              className={`arcade-panel px-5 py-3.5 sm:px-7 sm:py-4 flex items-start gap-4 ${
+                i === (d.clues?.length ?? 1) - 1 ? 'border-leaf/55 bg-leaf/12 shadow-[0_0_24px_-8px_rgba(56,236,130,0.4)]' : ''
+              }`}
+            >
+              <span
+                className="grid shrink-0 place-items-center rounded-xl bg-leaf font-extrabold text-night"
+                style={{ width: mobile ? 28 : 44, height: mobile ? 28 : 44, fontSize: mobile ? 13 : 22 }}
+              >
+                {i + 1}
+              </span>
+              <span className="font-semibold text-white leading-snug" style={{ fontSize: mobile ? 16 : 28 }}>
+                {cl}
+              </span>
             </div>
-          </>
-        ) : (
-          <>
-            <h1 className="fs-h1">{t('wai.who')}</h1>
-            <ol className="flex flex-col gap-3" aria-label={t('wai.clues')}>
-              {clues.map((c, i) => (
-                <li
-                  key={i}
-                  className={`a-drop rounded-[24px] border-[5px] border-night px-7 py-3 fs-body leading-snug ${
-                    i === clues.length - 1 ? 'bg-gold font-semibold text-night' : 'bg-night-3 text-white'
-                  }`}
-                >
-                  <span className="mr-4 font-bold">{i + 1}.</span>{c}
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
+          ))}
+        </div>
       </div>
+
+      <Pips n={d.locked ?? 0} total={d.total ?? 1} />
     </div>
   );
 }

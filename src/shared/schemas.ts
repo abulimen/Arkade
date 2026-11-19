@@ -52,7 +52,7 @@ export const PlayerActionSchema = z.object({
   seq: z.number().int().min(0).default(0),
 });
 
-export const MC_TYPES = ['START', 'PAUSE', 'RESUME', 'SKIP', 'ADD_TIME', 'HIDE_ANSWER', 'KICK', 'BAN', 'CAST_LOTS', 'CLEAR_LOTS', 'END', 'CLOSE', 'SOUND', 'REASK', 'NEXT'] as const;
+export const MC_TYPES = ['START', 'PAUSE', 'RESUME', 'SKIP', 'ADD_TIME', 'HIDE_ANSWER', 'KICK', 'BAN', 'END', 'CLOSE', 'SOUND', 'REASK', 'NEXT'] as const;
 export const McActionSchema = z.object({
   hostKey: z.string().max(64),
   type: z.enum(MC_TYPES),

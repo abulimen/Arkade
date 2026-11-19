@@ -15,8 +15,8 @@ export function QRPanel({ url, size = 280 }: { url: string; size?: number }) {
     return { d, n };
   }, [url]);
   return (
-    <div className="inline-block rounded-2xl bg-white p-4" style={{ width: size }}>
-      <svg viewBox={`0 0 ${n} ${n}`} width="100%" role="img" aria-label={t('lobby.scan')} shapeRendering="crispEdges"><path d={d} fill="#14123B" /></svg>
+    <div className="inline-block rounded-3xl border border-white/20 bg-white p-4 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.75)]" style={{ width: size }}>
+      <svg viewBox={`0 0 ${n} ${n}`} width="100%" role="img" aria-label={t('lobby.scan')} shapeRendering="crispEdges"><path d={d} fill="#0C0E14" /></svg>
     </div>
   );
 }

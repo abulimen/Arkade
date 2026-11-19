@@ -17,10 +17,12 @@ export function useCues(view: View | null, enabled: boolean) {
     if (view.phase === p.phase && view.round === p.round) return;
     const ph = view.phase;
     const accusedWolf = ph === 'accuse' && Array.isArray(view.data?.accused) && view.data.accused.some((a: { wolf: boolean }) => a.wolf);
-    if (ph === 'end') play('fanfare');
+    // The final results show and the round leaderboard reveal drive their own staged audio.
+    if (ph === 'end') return;
     else if (ph.endsWith('cut')) { play('shofar'); setTimeout(() => play('whoosh'), 900); }
     else if (accusedWolf) play('howl');
-    else if (['reveal', 'accuse', 'roundEnd', 's1r', 's2r', 's3r'].includes(ph) && !(view.gameId === 'spot-the-wolf' && ph === 'reveal')) { play('drum'); setTimeout(() => play('chime'), 800); }
+    else if (view.top5?.length) return;
+    else if (['reveal', 'accuse', 'roundEnd', 's1r', 's2r', 's3r'].includes(ph) && !(view.gameId === 'spot-the-wolf' && (ph === 'reveal' || ph === 'roundEnd'))) { play('drum'); setTimeout(() => play('chime'), 800); }
   }, [view, enabled]);
 
   const { secs } = useCountdown(view?.endsAt ?? null, view?.pausedMs ?? null);

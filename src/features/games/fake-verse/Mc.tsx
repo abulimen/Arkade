@@ -1,26 +1,97 @@
 'use client';
-import { t } from '@/i18n';
-import { Icon } from '@/ui/icons';
-import type { McProps } from '../types';
-import { Progress } from '../shared';
 
-export default function FvMc({ view, mc }: McProps) {
-  const d = view.data;
+import { t } from '@/i18n';
+import { Button } from '@/ui/kit';
+import type { McProps } from '../types';
+
+interface FakeMcData {
+  text?: string;
+  submitted?: number;
+  voted?: number;
+  total: number;
+  submissions?: { pid: string; nick: string; text: string; hidden: boolean }[];
+  options?: { id: string; text: string; by?: string[] }[];
+  result?: { truth: string; ref: string; correct: number };
+}
+
+export default function FakeVerseMc({ view, mc }: McProps) {
+  const d = view.data as FakeMcData;
+  const p = view.phase;
+
+  if (p === 'prompt') {
+    return (
+      <div className="rounded-2xl border border-sky/35 bg-sky/10 px-4 py-3 text-sm text-cloud">
+        <span className="text-xs font-bold uppercase tracking-widest text-sky block mb-1">{t('fv.read')}</span>
+        <span>{d.text}</span>
+      </div>
+    );
+  }
+
+  if (p === 'write') {
+    const subs = d.submissions ?? [];
+    return (
+      <div className="space-y-3">
+        <div className="text-xs font-bold uppercase tracking-widest text-leaf">
+          {t('screen.submitted', { n: d.submitted ?? 0, total: d.total })}
+        </div>
+        {subs.map((s) => (
+          <div
+            key={s.pid}
+            className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-night-3/80 px-3.5 py-2"
+          >
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-gold mr-2">{s.nick}</span>
+              <span className={`text-sm ${s.hidden ? 'line-through text-slate' : 'text-white font-medium'}`}>
+                {s.text}
+              </span>
+            </div>
+            <Button variant="ghost" small onClick={() => mc('HIDE_ANSWER', { playerId: s.pid })}>
+              {s.hidden ? t('mc.hidden') : t('mc.hide')}
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (p === 'vote') {
+    const opts = d.options ?? [];
+    return (
+      <div className="space-y-3">
+        <div className="text-xs font-bold uppercase tracking-widest text-sky">
+          {t('screen.voted', { n: d.voted ?? 0, total: d.total })}
+        </div>
+        {opts.map((o) => (
+          <div
+            key={o.id}
+            className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-night-3/80 px-3.5 py-2"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-white truncate">{o.text}</div>
+              {o.by && <div className="text-xs text-slate">{t('fv.by', { name: o.by.join(', ') })}</div>}
+            </div>
+            <Button variant="ghost" small onClick={() => mc('HIDE_ANSWER', { optionId: o.id })}>
+              {t('mc.hide')}
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (p === 'reveal' && d.result) {
+    return (
+      <div className="rounded-2xl border border-leaf/35 bg-leaf/10 px-4 py-3 space-y-1 text-sm">
+        <div className="text-xs font-bold uppercase tracking-widest text-leaf">{t('fv.truth')}</div>
+        <div className="font-bold text-white">{d.result.truth}</div>
+        <div className="text-xs text-slate">{d.result.ref} · {t('fv.gotItRight', { n: d.result.correct })}</div>
+      </div>
+    );
+  }
+
   return (
-    <section className="rounded-3xl bg-night-2 p-4" aria-label={t('mc.live')}>
-      <h2 className="fs-h2 mb-2">{t('mc.live')}</h2>
-      {view.phase === 'write' && <Progress n={d.submitted} total={d.total} label={t('screen.submitted', { n: d.submitted, total: d.total })} />}
-      {view.phase === 'vote' && <Progress n={d.voted} total={d.total} label={t('screen.voted', { n: d.voted, total: d.total })} />}
-      <ul className="mt-3 flex max-h-72 flex-col gap-2 overflow-y-auto">
-        {(d.submissions ?? []).map((s: { pid: string; nick: string; text: string; hidden: boolean }) => (
-          <li key={s.pid} className="flex items-center gap-2 rounded-xl bg-night-3 px-3 py-1 fs-body"><span className="flex-1 truncate">{s.hidden ? <s>{s.text}</s> : s.text} <span className="fs-small text-cloud">· {s.nick}</span></span>
-            <button type="button" disabled={s.hidden} onClick={() => void mc('HIDE_ANSWER', { playerId: s.pid })} className="inline-flex min-h-12 items-center gap-1 rounded-xl bg-coral px-3 font-semibold text-night disabled:opacity-50"><Icon n="eyeoff" size={20} />{s.hidden ? t('mc.hidden') : t('mc.hide')}</button></li>
-        ))}
-        {(d.options ?? []).map((o: { id: string; text: string; by: string[] }) => (
-          <li key={o.id} className="flex items-center gap-2 rounded-xl bg-night-3 px-3 py-1 fs-body"><span className="flex-1 truncate">{o.text} <span className="fs-small text-cloud">· {o.by.join(', ')}</span></span>
-            <button type="button" onClick={() => void mc('HIDE_ANSWER', { optionId: o.id })} className="inline-flex min-h-12 items-center gap-1 rounded-xl bg-coral px-3 font-semibold text-night"><Icon n="eyeoff" size={20} />{t('mc.hide')}</button></li>
-        ))}
-      </ul>
-    </section>
+    <div className="rounded-2xl border border-white/10 bg-night-3/70 px-4 py-3 text-sm font-semibold text-cloud">
+      {t('ph.end')}
+    </div>
   );
 }

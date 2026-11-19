@@ -11,7 +11,7 @@ const ratio = (a: string, b: string) => {
   const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
   return (x + 0.05) / (y + 0.05);
 };
-const T = { night: '#14123B', night2: '#1E1B55', night3: '#2A2670', cloud: '#F4F1FF', white: '#FFFFFF', gold: '#FFC83D', plank: '#C98A4B', coral: '#FF5C6C', tangerine: '#FF9A3D', lemon: '#FFE14D', leaf: '#3DD68C', sky: '#3DB8FF', indigo: '#6C5CE7', violet: '#B15CFF', success: '#2ED573', warning: '#FFA502', danger: '#FF4757' };
+const T = { night: '#0C0E14', night2: '#131722', night3: '#1C2230', cloud: '#F2F5FA', white: '#FFFFFF', gold: '#FFD026', plank: '#E2A83B', coral: '#FF5C6C', tangerine: '#FF9A3D', lemon: '#FFE14D', leaf: '#38EC82', sky: '#29C5FF', indigo: '#5856D6', violet: '#B56BFF', success: '#2ED573', warning: '#FFA502', danger: '#FF5263' };
 
 describe('WCAG AA contrast for every text/background pair used in the UI', () => {
   const pairs: [string, string][] = [

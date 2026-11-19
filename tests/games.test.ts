@@ -97,6 +97,8 @@ describe('Fake Verse', () => {
     const zebra = opts.find((o) => o.text.toLowerCase().startsWith('zebra'))!;
     expect(zebra.authors.length).toBe(2);
     const truth = opts.find((o) => o.kind === 'truth')!;
+    const p0VoteOpts = (room.viewFor({ role: 'player', playerId: bots[0].id }).data as { options: { id: string }[] }).options;
+    expect(p0VoteOpts.some((o) => o.id === zebra.id)).toBe(false);
     expect(act(room, bots[0], 'VOTE', { target: zebra.id }).error).toBe('OWN');
     expect(act(room, bots[3], 'VOTE', { target: zebra.id }).ok).toBe(true); // fools one -> 250 split between 2 authors = 125 each
     expect(act(room, bots[4], 'VOTE', { target: truth.id }).ok).toBe(true); // 500
@@ -106,6 +108,14 @@ describe('Fake Verse', () => {
     expect(room.game.scores[bots[4].id]).toBe(500);
     expect(room.game.scores[bots[0].id]).toBe(500 + 125);
     expect(room.game.scores[bots[1].id]).toBe(125);
+    const screenRes = (room.viewFor({ role: 'screen' }).data as { result: { fakes: { text: string; points: number }[] } }).result;
+    expect(screenRes.fakes.find((f) => f.text.toLowerCase().startsWith('zebra'))?.points).toBe(250);
+    const p0Res = (room.viewFor({ role: 'player', playerId: bots[0].id }).data as { result: { foolGain: number; fooledCount: number } }).result;
+    expect(p0Res.foolGain).toBe(125);
+    expect(p0Res.fooledCount).toBe(1);
+    const p1Res = (room.viewFor({ role: 'player', playerId: bots[1].id }).data as { result: { foolGain: number; fooledCount: number } }).result;
+    expect(p1Res.foolGain).toBe(125);
+    expect(p1Res.fooledCount).toBe(1);
     room.close();
   });
 
@@ -333,9 +343,7 @@ describe("Gideon's 300", () => {
 describe('Spot the Wolf', () => {
   it('plays a round: wolves hidden, tie-break logged, scoring 100 / 200 / 100', () => {
     const { room, bots } = mkRoom('spot-the-wolf', 8);
-    room.mcAction('CAST_LOTS', { n: 6 });
-    expect(room.spotlight?.ids.length).toBe(6);
-    start(room);
+    room.mcAction('START', { stage: bots.slice(0, 6).map((b) => b.id) });
     expect(room.game.stage.length).toBe(6);
     expect(bots.filter((b) => b.role === 'spectator').length).toBe(2);
     const g = () => room.game;
@@ -360,6 +368,9 @@ describe('Spot the Wolf', () => {
     const innocent = flock[0];
     flock.forEach((id, i) => act(room, byId(id), 'VOTE', { target: i < 3 ? wolf : innocent === id ? flock[1] : innocent }));
     act(room, byId(wolf), 'VOTE', { target: innocent });
+    expect(g().phase.name).toBe('vote');
+    expect(views(room, bots).screen.data.accused).toBeNull();
+    skip(room); // vote window ends -> accuse
     expect(g().phase.name).toBe('accuse');
     expect(g().accused).toEqual([wolf]);
     expect(g().caught).toEqual([wolf]);
@@ -384,6 +395,10 @@ describe('Spot the Wolf', () => {
     expect(g().phase.name).toBe('vote');
     const target = flock[0];
     bots.forEach((b) => { if (b.id !== target) act(room, b, 'VOTE', { target }); else act(room, b, 'VOTE', { target: flock[1] }); });
+    expect(g().phase.name).toBe('vote');
+    expect(views(room, bots).screen.data.accused).toBeNull();
+    expect(room.apply({ by: 'system', type: 'PHASE_TIMEOUT' })).toBeNull();
+    expect(g().phase.name).toBe('accuse');
     expect(g().accused).toEqual([target]);
     skip(room); // accuse -> roundEnd (no wolf caught)
     expect(g().phase.name).toBe('roundEnd');
@@ -437,6 +452,76 @@ describe('Spot the Wolf', () => {
     start(room);
     const r = room.join({ nickname: 'Late' });
     expect('player' in r && r.player.role).toBe('spectator');
+    room.close();
+  });
+
+  it('rotates wolves across rounds, exposes votedIds live, sets outcome, and hides leaderboard top5', () => {
+    const { room, bots } = mkRoom('spot-the-wolf', 6);
+    start(room);
+    const pickedWolves: string[] = [];
+    for (let round = 1; round <= 3; round++) {
+      const g = () => room.game;
+      const wolf = g().wolves[0] as string;
+      pickedWolves.push(wolf);
+      expect(views(room, bots).screen.data.impostorCount).toBe(1);
+      expect(views(room, bots).screen.top5).toBeUndefined();
+      // Skip reveal -> clues1 -> clues2 -> debate -> vote
+      skip(room); skip(room); skip(room); skip(room);
+      expect(g().phase.name).toBe('vote');
+      const vBefore = views(room, bots).screen;
+      expect(vBefore.data.votedIds).toEqual([]);
+      const flock = g().stage.filter((id: string) => id !== wolf) as string[];
+      const byId = (id: string) => bots.find((b) => b.id === id)!;
+      // First voter locks vote -> votedIds tracks them live
+      act(room, byId(flock[0]), 'VOTE', { target: wolf });
+      expect(views(room, bots).screen.data.votedIds).toEqual([flock[0]]);
+      // Cast remaining votes for the wolf
+      flock.slice(1).forEach((id) => act(room, byId(id), 'VOTE', { target: wolf }));
+      act(room, byId(wolf), 'VOTE', { target: flock[0] });
+      expect(g().phase.name).toBe('vote');
+      expect(views(room, bots).screen.data.accused).toBeNull();
+      expect(room.apply({ by: 'system', type: 'PHASE_TIMEOUT' })).toBeNull();
+      expect(g().phase.name).toBe('accuse');
+      expect(views(room, bots).screen.top5).toBeUndefined();
+      skip(room); // accuse -> guess
+      expect(g().phase.name).toBe('guess');
+      // Wolf misses on round 1 -> flock victory; guesses word on rounds 2 & 3 -> wolves victory
+      if (round === 1) {
+        act(room, byId(wolf), 'GUESS', { text: 'wrongguess' });
+        expect(g().phase.name).toBe('roundEnd');
+        expect(views(room, bots).screen.data.end.outcome).toBe('flock');
+      } else {
+        act(room, byId(wolf), 'GUESS', { text: g().word.word.toLowerCase() });
+        expect(g().phase.name).toBe('roundEnd');
+        expect(views(room, bots).screen.data.end.outcome).toBe('wolves');
+      }
+      expect(views(room, bots).screen.data.end.outcomeReason).toBeTruthy();
+      expect(views(room, bots).screen.top5).toBeUndefined();
+      skip(room); // roundEnd -> next round or end
+    }
+    expect(new Set(pickedWolves).size).toBe(3);
+    expect(room.game.phase.name).toBe('end');
+    const finalScreen = views(room, bots).screen;
+    expect(finalScreen.data.end.history).toHaveLength(3);
+    expect(finalScreen.top5).toBeUndefined();
+    room.close();
+  });
+
+  it('records missed clue when a player times out without typing a word', () => {
+    const { room, bots, clock } = mkRoom('spot-the-wolf', 6);
+    start(room);
+    skip(room); // reveal -> clues1
+    const g = () => room.game;
+    expect(g().phase.name).toBe('clues1');
+    const timedOutPid = g().turnOrder[0];
+    clock.adv((g().phase.endsAt ?? clock.now()) - clock.now() + 1);
+    expect(room.apply({ by: 'system', type: 'PHASE_TIMEOUT' })).toBeNull();
+    expect(g().clues[0]).toEqual({ pid: timedOutPid, round: 1, text: '', missed: true });
+    expect(g().turnIndex).toBe(1);
+    const screenView = views(room, bots).screen;
+    expect(screenView.data.clues[0]).toEqual({ pid: timedOutPid, round: 1, text: '', spoken: false, missed: true });
+    const mcView = views(room, bots).mc;
+    expect(mcView.data.mcClues[0].text).toBe('(failed to type a word)');
     room.close();
   });
 });

@@ -7,13 +7,24 @@ import { cleanText, guessMatches, isBlocked } from '../engine/text';
 import { diffsFor, pickPlan } from '../content';
 
 const LADDER: Difficulty[] = ['easy', 'easy', 'medium'];
-interface Clue { pid: string; round: number; text: string; hidden?: boolean; spoken?: boolean }
+interface Clue { pid: string; round: number; text: string; hidden?: boolean; spoken?: boolean; missed?: boolean }
+
+export interface WolfRoundRecord {
+  round: number;
+  word: string;
+  ref: string;
+  wolves: string[];
+  accused: string[];
+  outcome: 'flock' | 'wolves';
+  outcomeReason: string;
+}
 
 export interface State extends GameStateBase {
   rounds: number;
   plan: WolfItem[];
   stage: string[];
   wolves: string[];
+  wolfCounts: Record<string, number>;
   word: WolfItem;
   lookalike: boolean;
   wolfN: number | null;
@@ -27,6 +38,9 @@ export interface State extends GameStateBase {
   guesses: Record<string, string>;
   guessOk: Record<string, boolean>;
   gain: Record<string, number>;
+  outcome: 'flock' | 'wolves' | null;
+  outcomeReason: string | null;
+  roundHistory: WolfRoundRecord[];
   log: string[];
 }
 
@@ -36,8 +50,32 @@ const turnMs = (s: State, ctx: GameCtx, round: 1 | 2) => Math.max(6000, Math.flo
 function startRound(s: State, ctx: GameCtx, round: number): State {
   const word = s.plan[round - 1];
   const n = Math.max(1, Math.min(3, s.stage.length - 2, s.wolfN ?? wolfCount(s.stage.length)));
+  // Rotate wolves fairly across rounds so the same player doesn't get picked repeatedly while keeping Round 1 RNG identical.
+  const counts = s.wolfCounts ?? {};
+  const wolves = ctx.rng
+    .shuffle(s.stage)
+    .sort((a, b) => (counts[a] ?? 0) - (counts[b] ?? 0) || (s.wolves.includes(a) ? 1 : 0) - (s.wolves.includes(b) ? 1 : 0))
+    .slice(0, n);
+  const wolfCounts = { ...counts };
+  for (const w of wolves) wolfCounts[w] = (wolfCounts[w] ?? 0) + 1;
   return {
-    ...s, round, word, wolves: ctx.rng.sample(s.stage, n), turnOrder: ctx.rng.shuffle(s.stage), turnIndex: 0, clueRound: 1, clues: [], votes: {}, accused: [], caught: [], guesses: {}, guessOk: {}, gain: {},
+    ...s,
+    round,
+    word,
+    wolves,
+    wolfCounts,
+    turnOrder: ctx.rng.shuffle(s.stage),
+    turnIndex: 0,
+    clueRound: 1,
+    clues: [],
+    votes: {},
+    accused: [],
+    caught: [],
+    guesses: {},
+    guessOk: {},
+    gain: {},
+    outcome: null,
+    outcomeReason: null,
     phase: mkPhase('reveal', ctx.now(), sec(ctx, 20)),
   };
 }
@@ -64,6 +102,32 @@ function toAccuse(s: State, ctx: GameCtx): State {
   return { ...s, accused, caught, log, phase: mkPhase('accuse', ctx.now(), sec(ctx, 15)) };
 }
 
+function computeOutcome(s: State): { outcome: 'flock' | 'wolves'; outcomeReason: string } {
+  const plural = s.wolves.length > 1;
+  const anyGuessed = s.caught.some((id) => s.guessOk[id]);
+  if (anyGuessed) {
+    return {
+      outcome: 'wolves',
+      outcomeReason: plural ? 'A caught Wolf guessed the secret word!' : 'Caught, but the Wolf guessed the secret word!',
+    };
+  }
+  const allCaught = s.wolves.length > 0 && s.wolves.every((id) => s.accused.includes(id));
+  if (allCaught) {
+    return {
+      outcome: 'flock',
+      outcomeReason: plural ? 'Every Wolf was caught and stumped!' : 'The Wolf was caught and stumped!',
+    };
+  }
+  return {
+    outcome: 'wolves',
+    outcomeReason: plural
+      ? s.caught.length > 0
+        ? 'Another Wolf slipped past the vote!'
+        : 'The Wolves escaped undetected!'
+      : 'The Wolf escaped undetected!',
+  };
+}
+
 function toRoundEnd(s: State, ctx: GameCtx): State {
   const scores = { ...s.scores };
   const gain: Record<string, number> = {};
@@ -76,14 +140,29 @@ function toRoundEnd(s: State, ctx: GameCtx): State {
     gain[id] = g;
     scores[id] = (scores[id] ?? 0) + g;
   }
-  return { ...s, scores, gain, phase: mkPhase('roundEnd', ctx.now(), sec(ctx, 12)) };
+  const { outcome, outcomeReason } = computeOutcome(s);
+  const record: WolfRoundRecord = {
+    round: s.round,
+    word: s.word.word,
+    ref: s.word.ref,
+    wolves: [...s.wolves],
+    accused: [...s.accused],
+    outcome,
+    outcomeReason,
+  };
+  const roundHistory = [...(s.roundHistory ?? []).filter((r) => r.round !== s.round), record];
+  return { ...s, scores, gain, outcome, outcomeReason, roundHistory, phase: mkPhase('roundEnd', ctx.now(), sec(ctx, 12)) };
 }
 
 function advance(s: State, ctx: GameCtx, skip = false): State {
   switch (s.phase.name) {
     case 'reveal': return enterClues(s, ctx, 1);
     case 'clues1': case 'clues2':
-      if (!skip) return nextTurn(s, ctx);
+      if (!skip) {
+        const pid = s.turnOrder[s.turnIndex];
+        const next = pid ? { ...s, clues: [...s.clues, { pid, round: s.clueRound, text: '', missed: true }] } : s;
+        return nextTurn(next, ctx);
+      }
       return s.clueRound === 1 ? enterClues(s, ctx, 2) : enterDebate(s, ctx);
     case 'debate': return { ...s, phase: mkPhase('vote', ctx.now(), sec(ctx, 30)) };
     case 'vote': return toAccuse(s, ctx);
@@ -94,24 +173,38 @@ function advance(s: State, ctx: GameCtx, skip = false): State {
   }
 }
 
-const isRevealed = (s: State) => ['accuse', 'guess', 'roundEnd'].includes(s.phase.name);
+const isRevealed = (s: State) => ['accuse', 'guess', 'roundEnd', END].includes(s.phase.name);
 
 function pub(s: State, ctx: GameCtx) {
   const p = s.phase.name;
   const rev = isRevealed(s);
+  const resolvedOutcome = s.outcome ?? computeOutcome(s).outcome;
+  const resolvedReason = s.outcomeReason ?? computeOutcome(s).outcomeReason;
   return {
     category: s.word.category,
     stage: s.stage.map((id) => pubOf(ctx, id)),
     turnOrder: s.turnOrder,
     turnIndex: inClues(s) ? s.turnIndex : null,
     clueRound: s.clueRound,
-    clues: s.clues.filter((c) => !c.hidden).map(({ pid, round, text, spoken }) => ({ pid, round, text, spoken: !!spoken })),
+    clues: s.clues.filter((c) => !c.hidden).map(({ pid, round, text, spoken, missed }) => ({ pid, round, text, spoken: !!spoken, missed: !!missed })),
+    impostorCount: s.wolves.length,
     voted: Object.keys(s.votes).length,
+    votedIds: Object.keys(s.votes),
     votes: rev ? s.votes : null,
     accused: rev ? s.accused.map((id) => ({ id, wolf: s.wolves.includes(id) })) : null,
     guessing: p === 'guess' ? s.caught : null,
     end: p === 'roundEnd' || p === END
-      ? { word: s.word.word, ref: s.word.ref, verse: s.word.verse, wolves: s.wolves, guesses: Object.entries(s.guesses).map(([pid, text]) => ({ pid, text, ok: !!s.guessOk[pid] })), gain: s.gain }
+      ? {
+          word: s.word.word,
+          ref: s.word.ref,
+          verse: s.word.verse,
+          wolves: s.wolves,
+          guesses: Object.entries(s.guesses).map(([pid, text]) => ({ pid, text, ok: !!s.guessOk[pid] })),
+          gain: s.gain,
+          outcome: resolvedOutcome,
+          outcomeReason: resolvedReason,
+          history: s.roundHistory ?? [],
+        }
       : null,
   };
 }
@@ -123,8 +216,8 @@ export const spotTheWolf: GameModule<State> = {
     const stage = opts?.stage ?? Object.values(ctx.players).filter((p) => p.role === 'player').slice(0, 10).map((p) => p.id);
     const plan = pickPlan(ctx.content.wolf, diffsFor(ctx.config, LADDER), ctx.config.audience, ctx.rng);
     const s: State = {
-      phase: mkPhase('reveal', ctx.now(), 0), round: 1, rounds: plan.length, scores: {}, plan, stage, wolves: [], word: plan[0], lookalike: ctx.config.lookalike, wolfN: ctx.config.wolves,
-      turnOrder: [], turnIndex: 0, clueRound: 1, clues: [], votes: {}, accused: [], caught: [], guesses: {}, guessOk: {}, gain: {}, log: [],
+      phase: mkPhase('reveal', ctx.now(), 0), round: 1, rounds: plan.length, scores: {}, plan, stage, wolves: [], wolfCounts: {}, word: plan[0], lookalike: ctx.config.lookalike, wolfN: ctx.config.wolves,
+      turnOrder: [], turnIndex: 0, clueRound: 1, clues: [], votes: {}, accused: [], caught: [], guesses: {}, guessOk: {}, gain: {}, outcome: null, outcomeReason: null, roundHistory: [], log: [],
     };
     return startRound(s, ctx, 1);
   },
@@ -165,8 +258,8 @@ export const spotTheWolf: GameModule<State> = {
       if (!s.stage.includes(t) || t === pid) return fail(s, 'BAD_TARGET');
       if (s.votes[pid]) return fail(s, 'LOCKED');
       if (late) return fail(s, 'LATE');
-      const next = { ...s, votes: { ...s.votes, [pid]: t } };
-      return ok(Object.keys(next.votes).length >= s.stage.filter((id) => ctx.players[id]?.connected).length ? toAccuse(next, ctx) : next);
+      // Keep the vote window open (don't reveal who was accused/caught until the vote timer ends or MC advances).
+      return ok({ ...s, votes: { ...s.votes, [pid]: t } });
     }
     if (a.type === 'GUESS' && s.phase.name === 'guess') {
       if (!s.caught.includes(pid)) return fail(s, 'NOT_CAUGHT');
@@ -182,7 +275,7 @@ export const spotTheWolf: GameModule<State> = {
   },
   views: {
     screen(s, ctx) {
-      return { ...base(s), data: pub(s, ctx), showTop5: isRevealed(s) || s.phase.name === END };
+      return { ...base(s), data: pub(s, ctx), showTop5: false };
     },
     player(s, pid, ctx) {
       const d: Record<string, unknown> = { ...pub(s, ctx) };
@@ -200,7 +293,7 @@ export const spotTheWolf: GameModule<State> = {
     },
     mc(s, ctx) {
       const p = s.phase.name;
-      const d: Record<string, unknown> = { ...pub(s, ctx), mcClues: s.clues.map((c, i) => ({ i, nick: nick(ctx, c.pid), text: c.spoken ? '(said aloud)' : c.text, hidden: !!c.hidden })), log: s.log };
+      const d: Record<string, unknown> = { ...pub(s, ctx), mcClues: s.clues.map((c, i) => ({ i, nick: nick(ctx, c.pid), text: c.missed ? '(failed to type a word)' : c.spoken ? '(said aloud)' : c.text, hidden: !!c.hidden })), log: s.log };
       d.currentTurn = inClues(s) ? nick(ctx, s.turnOrder[s.turnIndex]) : null;
       return { ...base(s), data: d, hint: `hint.wolf.${p.startsWith('clues') ? 'clues' : p}`, controls: inClues(s) ? ['hide', 'next'] : [] };
     },

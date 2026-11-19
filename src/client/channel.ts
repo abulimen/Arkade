@@ -1,13 +1,13 @@
 'use client';
 import { createStore } from 'zustand/vanilla';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { View } from '@/shared/types';
 import { syncClock } from './clock';
 
 export type Conn = 'connecting' | 'connected' | 'reconnecting' | 'offline' | 'closed' | 'kicked';
 export interface ChannelState { conn: Conn; view: View | null; rev: number; reason: string | null }
 export interface ChannelOpts { code: string; role: 'screen' | 'player' | 'mc'; token?: string; key?: string }
-export interface Ack { ok: boolean; error?: string }
+export interface Ack { ok: boolean; error?: string; view?: View }
 
 const INIT: ChannelState = { conn: 'connecting', view: null, rev: -1, reason: null };
 
@@ -26,14 +26,24 @@ export function createChannel(o: ChannelOpts) {
     store.setState({ conn, reason });
   };
 
-  const open = () => {
+  const open = (silent = false) => {
     if (stopped) return;
     es = new EventSource(`/api/rooms/${o.code}/stream?${q}`);
-    es.addEventListener('open', () => { tries = 0; store.setState({ conn: 'connected', rev: -1 }); void syncClock(); });
+    es.addEventListener('open', () => {
+      tries = 0;
+      store.setState(silent ? { conn: 'connected' } : { conn: 'connected', rev: -1 });
+      if (!silent) void syncClock();
+    });
     es.addEventListener('view', (e) => {
       const v = JSON.parse((e as MessageEvent<string>).data) as View;
       if (v.rev < store.getState().rev) return; // views are full snapshots; ignore stale revisions
       store.setState({ view: v, rev: v.rev, conn: 'connected', reason: null });
+    });
+    es.addEventListener('reconnect', () => {
+      es?.close();
+      if (stopped) return;
+      tries = 0;
+      open(true);
     });
     es.addEventListener('kicked', (e) => finish('kicked', (JSON.parse((e as MessageEvent<string>).data) as { code: string }).code));
     es.addEventListener('closed', () => finish('closed'));
@@ -56,7 +66,11 @@ export function createChannel(o: ChannelOpts) {
   const post = async (path: string, body: Record<string, unknown>): Promise<Ack> => {
     try {
       const r = await fetch(`/api/rooms/${o.code}/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, seq: ++seq }) });
-      return (await r.json()) as Ack;
+      const ack = (await r.json()) as Ack;
+      if (ack.view && ack.view.rev >= store.getState().rev) {
+        store.setState({ view: ack.view, rev: ack.view.rev, conn: 'connected', reason: null });
+      }
+      return ack;
     } catch {
       return { ok: false, error: 'OFFLINE' };
     }
@@ -84,16 +98,33 @@ export function createChannel(o: ChannelOpts) {
 }
 export type Channel = ReturnType<typeof createChannel>;
 
-const noopSub = () => () => undefined;
 export function useChannel(o: ChannelOpts | null) {
-  const [ch, setCh] = useState<Channel | null>(null);
+  const [state, setState] = useState<ChannelState>(INIT);
+  const chRef = useRef<Channel | null>(null);
   const code = o?.code, role = o?.role, token = o?.token, key = o?.key;
+
   useEffect(() => {
     if (!code || !role) return;
     const c = createChannel({ code, role, token, key });
-    setCh(c);
-    return () => { c.stop(); setCh(null); };
+    chRef.current = c;
+    const unsub = c.store.subscribe(() => setState(c.store.getState()));
+    return () => {
+      unsub();
+      c.stop();
+      if (chRef.current === c) chRef.current = null;
+    };
   }, [code, role, token, key]);
-  const state = useSyncExternalStore(ch ? ch.store.subscribe : noopSub, ch ? ch.store.getState : () => INIT, () => INIT);
-  return { ...state, sendPlayer: ch?.sendPlayer, sendMc: ch?.sendMc };
+
+  const sendPlayer = useCallback(
+    (type: string, payload?: unknown) =>
+      chRef.current?.sendPlayer(type, payload) ?? Promise.resolve({ ok: false, error: 'OFFLINE' }),
+    [],
+  );
+  const sendMc = useCallback(
+    (type: string, payload?: unknown) =>
+      chRef.current?.sendMc(type, payload) ?? Promise.resolve({ ok: false, error: 'OFFLINE' }),
+    [],
+  );
+
+  return { ...state, sendPlayer, sendMc };
 }

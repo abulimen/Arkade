@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 
 export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
-  const room = getManager().get(code);
+  const room = await getManager().getAsync(code);
   if (!room || room.closed) return json({ error: 'ROOM_NOT_FOUND' }, 404);
   const base = baseUrl(req);
   return json({
