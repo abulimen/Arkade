@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { AVATAR_COUNT, GAME_META } from '@/shared/types';
-import type { GameConfig, GameId, McInfo, MyInfo, Player, PlayerPublic, RankEntry, RoomStatus, View } from '@/shared/types';
+import type { GameConfig, GameId, McInfo, MyInfo, Phase, Player, PlayerPublic, RankEntry, RoomStatus, View } from '@/shared/types';
 import { Rng } from '../engine/rng';
 import { END, addTime, mkPhase, pausePhase, rankByScore, resumePhase } from '../engine/kit';
 import type { GAction, GameCtx, GameModule } from '../engine/kit';
@@ -24,6 +24,7 @@ export interface RoomOpts {
   now?: () => number;
   seed?: number;
   live?: boolean;
+  skipCountdown?: boolean;
 }
 
 export interface Snapshot {
@@ -36,6 +37,7 @@ export interface Snapshot {
   order: string[];
   banned: string[];
   game: unknown;
+  countdown?: { phase: Phase; stage?: string[] } | null;
   rev: number;
   rngState: number;
   createdAt: number;
@@ -61,6 +63,7 @@ export class Room {
   order: string[] = [];
   banned = new Set<string>();
   game: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+  countdown: { phase: Phase; stage?: string[] } | null = null;
   rev = 0;
   createdAt: number;
   lastActivityAt: number;
@@ -82,6 +85,7 @@ export class Room {
   private content: Content;
   private maxPlayers: number;
   private live: boolean;
+  private skipCountdown: boolean;
 
   constructor(code: string, gameId: GameId, config: GameConfig, hostKeyHash: string, opts: RoomOpts = {}) {
     this.code = code;
@@ -92,6 +96,7 @@ export class Room {
     this.content = opts.content ?? getContent();
     this.maxPlayers = opts.maxPlayers ?? 500;
     this.live = !!opts.live;
+    this.skipCountdown = !!opts.skipCountdown;
     this.rng = new Rng(opts.seed ?? crypto.randomInt(1, 2 ** 31 - 1));
     this.createdAt = this.lastActivityAt = this.now();
   }
@@ -104,6 +109,7 @@ export class Room {
 
   status(): RoomStatus {
     if (this.closed) return 'closed';
+    if (this.countdown && !this.game) return this.countdown.phase.paused ? 'paused' : 'playing';
     if (!this.game) return 'lobby';
     if (this.game.phase.name === END) return 'results';
     return this.game.phase.paused ? 'paused' : 'playing';
@@ -243,21 +249,23 @@ export class Room {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     if (this.live) return;
-    const g = this.game;
-    if (this.closed || !g || g.phase.paused || g.phase.endsAt == null) return;
-    const delay = Math.max(0, g.phase.endsAt - this.now());
+    const phase = this.game?.phase ?? this.countdown?.phase;
+    if (this.closed || !phase || phase.paused || phase.endsAt == null) return;
+    const delay = Math.max(0, phase.endsAt - this.now());
     this.timer = setTimeout(() => {
       this.timer = null;
-      const cur = this.game;
-      if (!cur || cur.phase.paused || cur.phase.endsAt == null) return;
-      if (cur.phase.endsAt - this.now() > 50) return this.schedule();
-      this.apply({ by: 'system', type: 'PHASE_TIMEOUT' });
+      const cur = this.game?.phase ?? this.countdown?.phase;
+      if (this.closed || !cur || cur.paused || cur.endsAt == null) return;
+      if (cur.endsAt - this.now() > 50) return this.schedule();
+      if (!this.game && this.countdown) this.launchAfterCountdown();
+      else this.apply({ by: 'system', type: 'PHASE_TIMEOUT' });
     }, Math.min(delay, 2 ** 31 - 1));
   }
 
   currentEndsAt(): number | null {
-    if (this.closed || !this.game || this.game.phase.paused) return null;
-    return this.game.phase.endsAt ?? null;
+    const phase = this.game?.phase ?? this.countdown?.phase;
+    if (this.closed || !phase || phase.paused) return null;
+    return phase.endsAt ?? null;
   }
 
   advanceDueTimers(): boolean {
@@ -277,7 +285,15 @@ export class Room {
       }
     }
     for (let guard = 0; guard < 10; guard++) {
-      if (this.closed || !this.game || this.game.phase.paused) break;
+      if (this.closed) break;
+      if (!this.game && this.countdown) {
+        const cp = this.countdown.phase;
+        if (cp.paused || cp.endsAt == null || cp.endsAt > this.now()) break;
+        this.launchAfterCountdown();
+        changed = true;
+        continue;
+      }
+      if (!this.game || this.game.phase.paused) break;
       const endsAt = this.game.phase.endsAt;
       if (endsAt == null || endsAt > this.now()) break;
       const prevRev = this.rev;
@@ -307,13 +323,13 @@ export class Room {
       return { ok: true };
     }
     if (type === 'REROLL') {
-      if (this.game || p.rerolled) return { ok: false, error: 'NO_REROLL' };
+      if (this.game || this.countdown || p.rerolled) return { ok: false, error: 'NO_REROLL' };
       p.avatar = this.pickUniqueAvatar();
       p.rerolled = true;
       this.touch(false);
       return { ok: true };
     }
-    if (!this.game) return { ok: false, error: 'NOT_STARTED' };
+    if (!this.game) return { ok: false, error: this.countdown ? 'PHASE' : 'NOT_STARTED' };
     if (this.game.phase.paused) return { ok: false, error: 'PAUSED' };
     const err = this.apply({ by: 'player', playerId: p.id, type, payload, receivedAt });
     return err ? { ok: false, error: err } : { ok: true };
@@ -327,12 +343,34 @@ export class Room {
     switch (type) {
       case 'START': return this.start(payload);
       case 'PAUSE': case 'RESUME': case 'ADD_TIME': {
+        if (!g && this.countdown) {
+          const phase = type === 'PAUSE'
+            ? pausePhase(this.countdown.phase, now)
+            : type === 'RESUME'
+              ? resumePhase(this.countdown.phase, now)
+              : addTime(this.countdown.phase, Math.min(Math.max(Number(payload.seconds) || 15, 1), 120) * 1000);
+          if (phase !== this.countdown.phase) {
+            this.countdown = { ...this.countdown, phase };
+            this.touch(true);
+            this.schedule();
+            this.persist?.(true);
+          }
+          return { ok: true };
+        }
         if (!g) return { ok: false, error: 'NOT_STARTED' };
         const phase = type === 'PAUSE' ? pausePhase(g.phase, now) : type === 'RESUME' ? resumePhase(g.phase, now) : addTime(g.phase, Math.min(Math.max(Number(payload.seconds) || 15, 1), 120) * 1000);
         if (phase !== g.phase) this.commit({ ...g, phase });
         return { ok: true };
       }
-      case 'SKIP': case 'HIDE_ANSWER': case 'NEXT': case 'REASK': {
+      case 'SKIP': {
+        if (!g && this.countdown) {
+          this.launchAfterCountdown();
+          return { ok: true };
+        }
+        const err = this.apply({ by: 'mc', type, payload });
+        return err ? { ok: false, error: err } : { ok: true };
+      }
+      case 'HIDE_ANSWER': case 'NEXT': case 'REASK': {
         const err = this.apply({ by: 'mc', type, payload });
         return err ? { ok: false, error: err } : { ok: true };
       }
@@ -355,8 +393,8 @@ export class Room {
     }
   }
 
-  private start(payload: Record<string, unknown>) {
-    if (this.game) return { ok: false, error: 'STARTED' };
+  private validateStart(payload: Record<string, unknown>): { ok: true; stage?: string[] } | { ok: false; error: string } {
+    if (this.game || this.countdown) return { ok: false, error: 'STARTED' };
     const meta = GAME_META[this.gameId];
     const eligible = Object.values(this.players).filter((p) => p.role === 'player');
     let stage: string[] | undefined;
@@ -367,8 +405,32 @@ export class Room {
       if (ids.length < meta.minPlayers || ids.length > 10) return { ok: false, error: 'STAGE_SIZE' };
       stage = ids;
     } else if (eligible.filter((p) => p.connected).length < meta.minPlayers) return { ok: false, error: 'NEED_PLAYERS' };
+    return { ok: true, stage };
+  }
+
+  private launchAfterCountdown() {
+    if (!this.countdown) return;
+    const rawStage = this.countdown.stage;
+    const stage = rawStage ? rawStage.filter((id) => Boolean(this.players[id])) : undefined;
+    this.countdown = null;
     if (stage) for (const p of Object.values(this.players)) p.role = stage.includes(p.id) ? 'player' : 'spectator';
     this.commit(this.module.createState(this.ctx(), { stage }));
+  }
+
+  private start(payload: Record<string, unknown>) {
+    const v = this.validateStart(payload);
+    if (!v.ok) return v;
+    const { stage } = v;
+    if (this.skipCountdown) {
+      if (stage) for (const p of Object.values(this.players)) p.role = stage.includes(p.id) ? 'player' : 'spectator';
+      this.commit(this.module.createState(this.ctx(), { stage }));
+      return { ok: true };
+    }
+    const countdownSec = Math.max(3, Math.min(15, this.config.countdownSec ?? 7));
+    this.countdown = { phase: mkPhase('countdown', this.now(), countdownSec * 1000), stage };
+    this.touch(true);
+    this.schedule();
+    this.persist?.(true);
     return { ok: true };
   }
 
@@ -376,6 +438,7 @@ export class Room {
     if (this.closed) return;
     this.closed = true;
     this.closedAt = this.now();
+    this.countdown = null;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.flush();
@@ -429,7 +492,21 @@ export class Room {
     const me = sub.playerId ? this.players[sub.playerId] : undefined;
     let controls: string[] = [];
     let hint = 'hint.lobby';
-    if (!g) {
+    if (!g && this.countdown) {
+      const c = this.countdown.phase;
+      view.phase = 'countdown';
+      view.endsAt = c.paused ? null : c.endsAt;
+      view.pausedMs = c.paused ? c.paused.remainingMs : null;
+      view.round = null;
+      view.rounds = null;
+      view.data = {
+        countdownSec: Math.round(((c.endsAt ?? (c.startedAt + (this.config.countdownSec ?? 7) * 1000)) - c.startedAt) / 1000),
+        totalPlayers: all.length,
+        stageCount: this.countdown.stage?.length ?? all.filter((p) => p.role === 'player').length,
+      };
+      hint = 'hint.countdown';
+      controls = ['PAUSE', 'SKIP'];
+    } else if (!g) {
       view.data = sub.role === 'player' ? {} : { players: all.slice(0, 60).map(pub), total: all.length };
     } else {
       const mv = sub.role === 'screen' ? this.module.views.screen(g, this.ctx()) : sub.role === 'mc' ? this.module.views.mc(g, this.ctx()) : this.module.views.player(g, sub.playerId ?? '', this.ctx());
@@ -464,7 +541,7 @@ export class Room {
   toSnapshot(): Snapshot {
     return {
       v: 1, code: this.code, gameId: this.gameId, config: this.config, hostKeyHash: this.hostKeyHash, players: this.players, order: this.order, banned: [...this.banned], game: this.game,
-      rev: this.rev, rngState: this.rng.state, createdAt: this.createdAt, lastActivityAt: this.lastActivityAt, sound: this.sound, savedAt: this.now(),
+      countdown: this.countdown, rev: this.rev, rngState: this.rng.state, createdAt: this.createdAt, lastActivityAt: this.lastActivityAt, sound: this.sound, savedAt: this.now(),
       closed: this.closed, closedAt: this.closedAt, historyRecorded: this.historyRecorded, rtts: this.rtts,
     };
   }
@@ -477,6 +554,12 @@ export class Room {
     r.order = s.order;
     r.banned = new Set(s.banned);
     r.game = s.game;
+    r.countdown = s.countdown
+      ? {
+          phase: { ...s.countdown.phase, ...(s.countdown.phase.paused ? { paused: { ...s.countdown.phase.paused } } : {}) },
+          stage: s.countdown.stage ? [...s.countdown.stage] : undefined,
+        }
+      : null;
     r.rev = opts.live ? s.rev : s.rev + 1;
     r.rng.state = s.rngState;
     r.createdAt = s.createdAt;
@@ -490,6 +573,9 @@ export class Room {
     } else if (r.game && r.game.phase.endsAt != null && !r.game.phase.paused) {
       // Timers resume from the stored endsAt; if it already passed, wait for the MC to resume.
       if (r.game.phase.endsAt <= r.now()) r.game.phase = pausePhase({ ...r.game.phase, endsAt: r.now() }, r.now());
+      else r.schedule();
+    } else if (!r.game && r.countdown && r.countdown.phase.endsAt != null && !r.countdown.phase.paused) {
+      if (r.countdown.phase.endsAt <= r.now()) r.countdown.phase = pausePhase({ ...r.countdown.phase, endsAt: r.now() }, r.now());
       else r.schedule();
     }
     return r;

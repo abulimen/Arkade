@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -11,6 +11,50 @@ import type { Room } from '@/server/rooms/Room';
 import { MASCOT_NAMES, CORE_EXPRESSIONS, MASCOT_SRC, MascotView } from '@/ui/mascots';
 import { Avatar } from '@/ui/avatars';
 import { AVATAR_NAMES } from '@/shared/types';
+import ScreenRoot from '@/features/screen/ScreenRoot';
+import PlayerRoot from '@/features/player/PlayerRoot';
+import McConsole from '@/features/mc/McConsole';
+import CountdownStage from '@/features/games/CountdownStage';
+
+const mockState = vi.hoisted(() => ({
+  view: null as View | null,
+  hostKey: null as string | null,
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: () => undefined, push: () => undefined, prefetch: () => undefined }),
+}));
+
+vi.mock('@/client/channel', async () => {
+  const actual = await vi.importActual<typeof import('@/client/channel')>('@/client/channel');
+  return {
+    ...actual,
+    useChannel: () => ({
+      conn: 'connected' as const,
+      view: mockState.view,
+      reason: null,
+      sendPlayer: async () => ({ ok: true }),
+      sendMc: async () => ({ ok: true }),
+    }),
+  };
+});
+
+vi.mock('react', async () => {
+  const actual = await vi.importActual<typeof import('react')>('react');
+  return {
+    ...actual,
+    useSyncExternalStore: <T,>(
+      subscribe: (onStoreChange: () => void) => () => void,
+      getSnapshot: () => T,
+      getServerSnapshot?: () => T,
+    ) => {
+      if (mockState.hostKey !== null && getServerSnapshot && (getServerSnapshot() as unknown) === '') {
+        return actual.useSyncExternalStore(subscribe, getSnapshot, () => mockState.hostKey as unknown as T);
+      }
+      return actual.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+    },
+  };
+});
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import WcfP from '@/features/games/what-came-first/Player'; import WcfS from '@/features/games/what-came-first/Screen'; import WcfM from '@/features/games/what-came-first/Mc';
@@ -93,5 +137,61 @@ describe('mascots and avatars', () => {
   it('24 avatars render under 1.2 KB each', () => {
     expect(AVATAR_NAMES.length).toBe(24);
     for (let i = 0; i < 24; i++) expect(renderToStaticMarkup(<Avatar avatar={i} color={i % 6} />).length, AVATAR_NAMES[i]).toBeLessThan(1700);
+  });
+});
+
+describe('countdown SSR rendering', () => {
+  afterEach(() => {
+    mockState.view = null;
+    mockState.hostKey = null;
+  });
+
+  it.each(GAME_IDS)('renders ScreenRoot, PlayerRoot, McConsole, and CountdownStage during %s countdown without throwing', (game) => {
+    const fixedNow = Date.now() + 60_000;
+    const { room, bots } = mkRoom(game, game === 'spot-the-wolf' ? 6 : 4, {}, 7, { now: () => fixedNow, skipCountdown: false });
+    expect(room.mcAction('START').ok).toBe(true);
+
+    const sv = room.viewFor({ role: 'screen' }) as View;
+    const pv = room.viewFor({ role: 'player', playerId: bots[0].id }) as View;
+    const mv = room.viewFor({ role: 'mc' }) as View;
+    expect(sv.phase).toBe('countdown');
+    expect(pv.phase).toBe('countdown');
+    expect(mv.phase).toBe('countdown');
+
+    // ScreenRoot (desktop & mobile)
+    const screenHtml = renderToStaticMarkup(<ScreenRoot view={sv} conn="connected" />);
+    expect(screenHtml).toContain('Get Ready!');
+    expect(screenHtml).toContain('Eyes on Your Phones');
+
+    const screenMobileHtml = renderToStaticMarkup(<CountdownStage view={sv} surface="screen" mobile />);
+    expect(screenMobileHtml).toContain('Get Ready');
+
+    // PlayerRoot during countdown
+    mockState.view = pv;
+    const playerHtml = renderToStaticMarkup(<PlayerRoot code={pv.room} />);
+    expect(playerHtml).toContain('Get Ready!');
+    expect(playerHtml).toContain('Look up! Starting in');
+
+    // McConsole during countdown
+    mockState.view = mv;
+    mockState.hostKey = 'host-key';
+    const mcHtml = renderToStaticMarkup(<McConsole code={mv.room} />);
+    expect(mcHtml).toContain('Launch Countdown');
+    expect(mcHtml).toContain('Pause');
+    expect(mcHtml).toContain('Skip');
+
+    // Paused countdown state renders cleanly across all three surfaces
+    expect(room.mcAction('PAUSE').ok).toBe(true);
+    const pausedScreen = room.viewFor({ role: 'screen' }) as View;
+    const pausedPlayer = room.viewFor({ role: 'player', playerId: bots[0].id }) as View;
+    const pausedMc = room.viewFor({ role: 'mc' }) as View;
+
+    expect(renderToStaticMarkup(<ScreenRoot view={pausedScreen} conn="connected" />)).toContain('Show Paused');
+    mockState.view = pausedPlayer;
+    expect(renderToStaticMarkup(<PlayerRoot code={pausedPlayer.room} />)).toContain('Paused by Host');
+    mockState.view = pausedMc;
+    expect(renderToStaticMarkup(<McConsole code={pausedMc.room} />)).toContain('Resume');
+
+    room.close();
   });
 });

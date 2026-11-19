@@ -1,10 +1,22 @@
 // Client-safe shared types and constants (no zod import: keeps the phone bundle small).
+import type { FvItem, G3Item, WaiItem, WcfItem, WolfItem } from './schemas';
+
 export const GAME_IDS = ['spot-the-wolf', 'fake-verse', 'gideons-300', 'what-came-first', 'who-am-i'] as const;
 export type GameId = (typeof GAME_IDS)[number];
 export type Audience = 'kids' | 'youth' | 'adults';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type RoomStatus = 'lobby' | 'playing' | 'paused' | 'results' | 'closed';
 export type Mode = 'individual' | 'team';
+export type TestamentFilter = 'all' | 'OT' | 'NT';
+export type CustomQuestionMode = 'only' | 'mix';
+
+export interface CustomQuestions {
+  wcf?: WcfItem[];
+  fv?: FvItem[];
+  g300?: G3Item[];
+  wolf?: WolfItem[];
+  wai?: WaiItem[];
+}
 
 export interface GameConfig {
   audience: Audience;
@@ -16,6 +28,34 @@ export interface GameConfig {
   keep2: number;
   finalists: number;
   wolves: number | null;
+  // Universal advanced
+  countdownSec: number;
+  testament: TestamentFilter;
+  rounds: number | null;
+  // Battle Royale (gideons-300)
+  s1Questions: number;
+  s2Questions: number;
+  s3Target: number;
+  questionSec: number | null;
+  // Spot the Wolf
+  wolfCategories: string[];
+  clueRounds: 1 | 2;
+  debateSec: number;
+  allowWolfGuess: boolean;
+  // What Came First
+  orderSec: number;
+  // Fake Verse
+  writeSec: number;
+  voteSec: number;
+  doubleFinalRounds: boolean;
+  showDecoys: boolean;
+  // Who Am I
+  clueSec: number;
+  wrongPenalty: number;
+  optionCount: 4 | 6 | null;
+  // Custom CSV
+  customMode: CustomQuestionMode;
+  customQuestions?: CustomQuestions;
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
@@ -28,6 +68,26 @@ export const DEFAULT_CONFIG: GameConfig = {
   keep2: 0.34,
   finalists: 10,
   wolves: null,
+  countdownSec: 7,
+  testament: 'all',
+  rounds: null,
+  s1Questions: 6,
+  s2Questions: 6,
+  s3Target: 5,
+  questionSec: null,
+  wolfCategories: [],
+  clueRounds: 2,
+  debateSec: 90,
+  allowWolfGuess: true,
+  orderSec: 40,
+  writeSec: 45,
+  voteSec: 20,
+  doubleFinalRounds: true,
+  showDecoys: true,
+  clueSec: 10,
+  wrongPenalty: 50,
+  optionCount: null,
+  customMode: 'mix',
 };
 
 export interface GameMeta {

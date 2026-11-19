@@ -22,6 +22,7 @@ import { QRPanel } from '@/ui/qr';
 import { phaseTitle } from '../player/PlayerRoot';
 import { useCues } from './cues';
 import { ResultsShow } from './ResultsShow';
+import CountdownStage from '@/features/games/CountdownStage';
 import type { ScreenProps } from '@/features/games/types';
 import SpotWolfScreen from '@/features/games/spot-the-wolf/Screen';
 import FakeVerseScreen from '@/features/games/fake-verse/Screen';
@@ -213,12 +214,14 @@ function ScreenInner({
     );
   }
 
-  const ActiveScreen = ScreenUI[view.gameId];
+  const isCountdown = view.phase === 'countdown';
 
   if ((view.status === 'results' || view.phase === 'end') && view.gameId !== 'spot-the-wolf') {
     const podiumKey = `${view.room}-${(view.podium ?? []).map((p) => p.id).join(',')}`;
     return <ResultsShow key={podiumKey} view={view} gameName={meta.name} mobile={mobile} preview={preview} />;
   }
+
+  const ActiveScreen = isCountdown ? null : ScreenUI[view.gameId];
 
   const showTop5 = Boolean(view.top5?.length);
   // Re-run the staged reveal only when the standings actually change, not on every phase tick.
@@ -234,7 +237,11 @@ function ScreenInner({
         </div>
 
         <div className="flex-1 flex flex-col justify-center">
-          <ActiveScreen view={view} preview={preview} />
+          {isCountdown || !ActiveScreen ? (
+            <CountdownStage view={view} surface="screen" mobile={mobile} preview={preview} />
+          ) : (
+            <ActiveScreen view={view} preview={preview} />
+          )}
         </div>
 
         {showTop5 && (
@@ -278,7 +285,11 @@ function ScreenInner({
         }`}
       >
         <div className="h-full flex flex-col justify-center min-w-0">
-          <ActiveScreen view={view} preview={preview} />
+          {isCountdown || !ActiveScreen ? (
+            <CountdownStage view={view} surface="screen" mobile={mobile} preview={preview} />
+          ) : (
+            <ActiveScreen view={view} preview={preview} />
+          )}
         </div>
 
         {showTop5 && (

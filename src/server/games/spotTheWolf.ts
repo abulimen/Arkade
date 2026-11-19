@@ -4,7 +4,7 @@ import { END, fail, mkPhase, nick, ok, pubOf, sec } from '../engine/kit';
 import type { GameCtx, GameModule, GameStateBase, ModView } from '../engine/kit';
 import { WOLF_CAUGHT_GUESS, WOLF_FLOCK, WOLF_HIDDEN, rankIds, wolfCount } from '../engine/scoring';
 import { cleanText, guessMatches, isBlocked } from '../engine/text';
-import { diffsFor, pickPlan } from '../content';
+import { diffsFor, pickPlan, scaleLadder } from '../content';
 
 const LADDER: Difficulty[] = ['easy', 'easy', 'medium'];
 interface Clue { pid: string; round: number; text: string; hidden?: boolean; spoken?: boolean; missed?: boolean }
@@ -80,12 +80,13 @@ function startRound(s: State, ctx: GameCtx, round: number): State {
   };
 }
 const enterClues = (s: State, ctx: GameCtx, round: 1 | 2): State => ({ ...s, clueRound: round, turnIndex: 0, phase: mkPhase(`clues${round}`, ctx.now(), turnMs(s, ctx, round)) });
-const enterDebate = (s: State, ctx: GameCtx): State => ({ ...s, phase: mkPhase('debate', ctx.now(), sec(ctx, 90)) });
+const enterDebate = (s: State, ctx: GameCtx): State => ({ ...s, phase: mkPhase('debate', ctx.now(), sec(ctx, ctx.config.debateSec ?? 90)) });
 
 function nextTurn(s: State, ctx: GameCtx): State {
   const idx = s.turnIndex + 1;
   if (idx < s.turnOrder.length) return { ...s, turnIndex: idx, phase: mkPhase(s.phase.name, ctx.now(), turnMs(s, ctx, s.clueRound)) };
-  return s.clueRound === 1 ? enterClues(s, ctx, 2) : enterDebate(s, ctx);
+  const maxClueRounds = ctx.config.clueRounds ?? 2;
+  return s.clueRound === 1 && maxClueRounds >= 2 ? enterClues(s, ctx, 2) : enterDebate(s, ctx);
 }
 
 function toAccuse(s: State, ctx: GameCtx): State {
@@ -163,10 +164,10 @@ function advance(s: State, ctx: GameCtx, skip = false): State {
         const next = pid ? { ...s, clues: [...s.clues, { pid, round: s.clueRound, text: '', missed: true }] } : s;
         return nextTurn(next, ctx);
       }
-      return s.clueRound === 1 ? enterClues(s, ctx, 2) : enterDebate(s, ctx);
+      return s.clueRound === 1 && (ctx.config.clueRounds ?? 2) >= 2 ? enterClues(s, ctx, 2) : enterDebate(s, ctx);
     case 'debate': return { ...s, phase: mkPhase('vote', ctx.now(), sec(ctx, 30)) };
     case 'vote': return toAccuse(s, ctx);
-    case 'accuse': return s.caught.length ? { ...s, phase: mkPhase('guess', ctx.now(), sec(ctx, 15)) } : toRoundEnd(s, ctx);
+    case 'accuse': return s.caught.length && (ctx.config.allowWolfGuess ?? true) ? { ...s, phase: mkPhase('guess', ctx.now(), sec(ctx, 15)) } : toRoundEnd(s, ctx);
     case 'guess': return toRoundEnd(s, ctx);
     case 'roundEnd': return s.round < s.rounds ? startRound(s, ctx, s.round + 1) : { ...s, phase: mkPhase(END, ctx.now(), null) };
     default: return s;
@@ -214,7 +215,13 @@ export const spotTheWolf: GameModule<State> = {
   id: 'spot-the-wolf',
   createState(ctx, opts) {
     const stage = opts?.stage ?? Object.values(ctx.players).filter((p) => p.role === 'player').slice(0, 10).map((p) => p.id);
-    const plan = pickPlan(ctx.content.wolf, diffsFor(ctx.config, LADDER), ctx.config.audience, ctx.rng);
+    const ladder = scaleLadder(LADDER, ctx.config.rounds ?? null);
+    const plan = pickPlan(ctx.content.wolf, diffsFor(ctx.config, ladder), ctx.config.audience, ctx.rng, {
+      testament: ctx.config.testament,
+      categories: ctx.config.wolfCategories,
+      custom: ctx.config.customQuestions?.wolf,
+      customMode: ctx.config.customMode,
+    });
     const s: State = {
       phase: mkPhase('reveal', ctx.now(), 0), round: 1, rounds: plan.length, scores: {}, plan, stage, wolves: [], wolfCounts: {}, word: plan[0], lookalike: ctx.config.lookalike, wolfN: ctx.config.wolves,
       turnOrder: [], turnIndex: 0, clueRound: 1, clues: [], votes: {}, accused: [], caught: [], guesses: {}, guessOk: {}, gain: {}, outcome: null, outcomeReason: null, roundHistory: [], log: [],

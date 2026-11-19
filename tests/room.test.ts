@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Room } from '@/server/rooms/Room';
+import { DEFAULT_CONFIG } from '@/shared/types';
+import { Room, hashKey } from '@/server/rooms/Room';
 import { mkRoom, act, j } from './helpers';
 import type { Sub } from '@/server/rooms/Room';
 
@@ -242,5 +243,142 @@ describe('scale', () => {
     expect(p.length).toBeLessThan(2048);
     expect(s.length).toBeLessThan(8192);
     room.close();
+  });
+});
+
+describe('pre-game launch countdown', () => {
+  it('START enters countdown for default 7s, blocks gameplay actions, and advances straight into round 1 at +7000ms', () => {
+    const clock = { t: 1_000_000, adv(ms: number) { this.t += ms; } };
+    // Verify Room defaults skipCountdown to false when omitted
+    const room = new Room('CNTD', 'what-came-first', { ...DEFAULT_CONFIG }, hashKey('host-key'), { now: () => clock.t, seed: 7, live: true });
+    const p1 = room.join({ nickname: 'Alice' });
+    const p2 = room.join({ nickname: 'Bob' });
+    if ('error' in p1 || 'error' in p2) throw new Error('join failed');
+    p1.player.connected = true;
+    p2.player.connected = true;
+
+    expect(room.mcAction('START')).toEqual({ ok: true });
+    expect(room.game).toBeNull();
+    expect(room.countdown).not.toBeNull();
+    expect(room.status()).toBe('playing');
+    expect(room.currentEndsAt()).toBe(clock.t + 7000);
+
+    const sv = room.viewFor({ role: 'screen' });
+    const pv = room.viewFor({ role: 'player', playerId: p1.player.id });
+    const mv = room.viewFor({ role: 'mc' });
+    for (const v of [sv, pv, mv]) {
+      expect(v.phase).toBe('countdown');
+      expect(v.status).toBe('playing');
+      expect(v.endsAt).toBe(clock.t + 7000);
+      expect(v.pausedMs).toBeNull();
+      expect(v.round).toBeNull();
+      expect(v.rounds).toBeNull();
+      expect(v.data).toEqual({ countdownSec: 7, totalPlayers: 2, stageCount: 2 });
+    }
+    expect(mv.mc?.hint).toBe('hint.countdown');
+    expect(mv.mc?.controls).toEqual(['PAUSE', 'SKIP']);
+
+    // Rejects player gameplay actions & rerolls during countdown, allows PING, prevents double START
+    expect(act(room, p1.player, 'LOCK', { order: [] })).toEqual({ ok: false, error: 'PHASE' });
+    expect(act(room, p1.player, 'REROLL', {})).toEqual({ ok: false, error: 'NO_REROLL' });
+    expect(act(room, p1.player, 'PING', { rtt: 42 })).toEqual({ ok: true });
+    expect(room.mcAction('START')).toEqual({ ok: false, error: 'STARTED' });
+
+    // Before 7000ms, timer does not fire
+    clock.adv(6999);
+    expect(room.advanceDueTimers()).toBe(false);
+    expect(room.game).toBeNull();
+    expect(room.viewFor({ role: 'screen' }).phase).toBe('countdown');
+
+    // Exactly at +7000ms, transitions straight into round 1
+    clock.adv(1);
+    expect(room.advanceDueTimers()).toBe(true);
+    expect(room.countdown).toBeNull();
+    expect(room.game).not.toBeNull();
+    expect(room.game.round).toBe(1);
+    expect(room.game.phase.name).toBe('prompt');
+    expect(room.viewFor({ role: 'screen' }).phase).toBe('prompt');
+    expect(room.viewFor({ role: 'screen' }).round).toBe(1);
+    room.close();
+  });
+
+  it('supports PAUSE, RESUME, ADD_TIME, and SKIP on countdown (including custom countdownSec and stage selection)', () => {
+    const { room, bots, clock } = mkRoom('spot-the-wolf', 6, { countdownSec: 12 }, 7, { skipCountdown: false });
+    const pickedStage = bots.slice(0, 4).map((b) => b.id);
+    expect(room.mcAction('START', { stage: pickedStage })).toEqual({ ok: true });
+    expect(room.viewFor({ role: 'screen' }).data).toEqual({ countdownSec: 12, totalPlayers: 6, stageCount: 4 });
+    expect(room.countdown?.phase.endsAt).toBe(clock.t + 12_000);
+
+    clock.adv(3000);
+    expect(room.mcAction('PAUSE')).toEqual({ ok: true });
+    expect(room.status()).toBe('paused');
+    expect(room.currentEndsAt()).toBeNull();
+    expect(room.viewFor({ role: 'screen' }).pausedMs).toBe(9000);
+    expect(room.viewFor({ role: 'screen' }).endsAt).toBeNull();
+    expect(act(room, bots[0], 'CLUE', { text: 'ark' })).toEqual({ ok: false, error: 'PHASE' });
+
+    clock.adv(25_000);
+    expect(room.mcAction('RESUME')).toEqual({ ok: true });
+    expect(room.status()).toBe('playing');
+    expect(room.countdown?.phase.endsAt).toBe(clock.t + 9000);
+
+    expect(room.mcAction('ADD_TIME', { seconds: 5 })).toEqual({ ok: true });
+    expect(room.countdown?.phase.endsAt).toBe(clock.t + 14_000);
+
+    // SKIP launches immediately and applies stage roles
+    expect(room.mcAction('SKIP')).toEqual({ ok: true });
+    expect(room.countdown).toBeNull();
+    expect(room.game).not.toBeNull();
+    expect(room.game.round).toBe(1);
+    expect(room.game.phase.name).toBe('reveal');
+    expect(bots.slice(0, 4).every((b) => b.role === 'player')).toBe(true);
+    expect(bots.slice(4).every((b) => b.role === 'spectator')).toBe(true);
+    room.close();
+  });
+
+  it('snapshot round-trips preserve active and paused countdown state across live and non-live restores', () => {
+    const { room, clock } = mkRoom('fake-verse', 3, { countdownSec: 7 }, 7, { live: true, skipCountdown: false });
+    expect(room.mcAction('START')).toEqual({ ok: true });
+    clock.adv(2000);
+
+    // Live round-trip while running
+    const snap1 = JSON.parse(JSON.stringify(room.toSnapshot()));
+    room.close();
+    const live1 = Room.restore(snap1, { now: () => clock.t, live: true });
+    expect(live1.game).toBeNull();
+    expect(live1.countdown).not.toBeNull();
+    expect(live1.status()).toBe('playing');
+    expect(live1.viewFor({ role: 'screen' }).phase).toBe('countdown');
+    expect(live1.currentEndsAt()).toBe(snap1.countdown.phase.endsAt);
+
+    // Pause, round-trip again, resume, then advance past remaining 5000ms
+    expect(live1.mcAction('PAUSE')).toEqual({ ok: true });
+    const snap2 = JSON.parse(JSON.stringify(live1.toSnapshot()));
+    live1.close();
+    const live2 = Room.restore(snap2, { now: () => clock.t, live: true });
+    expect(live2.status()).toBe('paused');
+    expect(live2.viewFor({ role: 'screen' }).pausedMs).toBe(5000);
+
+    clock.adv(20_000);
+    expect(live2.advanceDueTimers()).toBe(false);
+    expect(live2.mcAction('RESUME')).toEqual({ ok: true });
+    expect(live2.countdown?.phase.endsAt).toBe(clock.t + 5000);
+
+    clock.adv(5000);
+    expect(live2.advanceDueTimers()).toBe(true);
+    expect(live2.countdown).toBeNull();
+    expect(live2.game.round).toBe(1);
+    expect(live2.game.phase.name).toBe('prompt');
+    live2.close();
+
+    // Non-live restore pauses an expired countdown instead of auto-launching
+    clock.adv(20_000);
+    const expired = Room.restore(snap1, { now: () => clock.t });
+    expect(expired.status()).toBe('paused');
+    expect(expired.game).toBeNull();
+    expect(expired.countdown).not.toBeNull();
+    expired.mcAction('RESUME');
+    expect(expired.status()).toBe('playing');
+    expired.close();
   });
 });

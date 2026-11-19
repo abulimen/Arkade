@@ -4,7 +4,7 @@ import { RAINBOW } from '@/shared/types';
 import { END, activeIds, fail, isPlayer, mkPhase, ok, sec } from '../engine/kit';
 import type { GameCtx, GameModule, GameStateBase, ModView } from '../engine/kit';
 import { WAI_PENALTY, whoAmIPoints } from '../engine/scoring';
-import { diffsFor, pickPlan } from '../content';
+import { diffsFor, pickPlan, scaleLadder } from '../content';
 
 const LADDER: Difficulty[] = ['easy', 'easy', 'easy', 'medium', 'medium', 'medium', 'hard', 'hard'];
 const clueOf = (name: string) => (name.startsWith('clue') ? Number(name.slice(4)) - 1 : -1);
@@ -22,9 +22,10 @@ const subject = (s: State) => s.plan[s.round - 1];
 
 function startRound(s: State, ctx: GameCtx, round: number): State {
   const sub = s.plan[round - 1];
+  const optionCount = ctx.config.optionCount ?? (ctx.config.audience === 'kids' ? 4 : 6);
   const others = sub.options.filter((o) => o !== sub.name);
-  const pool = ctx.config.audience === 'kids' ? [sub.name, ...ctx.rng.sample(others, 3)] : sub.options;
-  return { ...s, round, options: ctx.rng.shuffle(pool), answers: {}, gain: {}, correctCount: 0, phase: mkPhase('clue1', ctx.now(), sec(ctx, 10)) };
+  const pool = optionCount === 4 ? [sub.name, ...ctx.rng.sample(others, 3)] : sub.options;
+  return { ...s, round, options: ctx.rng.shuffle(pool), answers: {}, gain: {}, correctCount: 0, phase: mkPhase('clue1', ctx.now(), sec(ctx, ctx.config.clueSec ?? 10)) };
 }
 
 function toReveal(s: State, ctx: GameCtx): State {
@@ -42,7 +43,7 @@ function toReveal(s: State, ctx: GameCtx): State {
 
 function advance(s: State, ctx: GameCtx): State {
   const n = clueOf(s.phase.name);
-  if (n >= 0 && n < 4) return { ...s, phase: mkPhase(`clue${n + 2}`, ctx.now(), sec(ctx, 10)) };
+  if (n >= 0 && n < 4) return { ...s, phase: mkPhase(`clue${n + 2}`, ctx.now(), sec(ctx, ctx.config.clueSec ?? 10)) };
   if (n === 4) return toReveal(s, ctx);
   if (s.phase.name === 'reveal') return s.round < s.rounds ? startRound(s, ctx, s.round + 1) : { ...s, phase: mkPhase(END, ctx.now(), null) };
   return s;
@@ -65,7 +66,12 @@ const pubData = (s: State, ctx: GameCtx) => {
 export const whoAmI: GameModule<State> = {
   id: 'who-am-i',
   createState(ctx) {
-    const plan = pickPlan(ctx.content.wai, diffsFor(ctx.config, LADDER), ctx.config.audience, ctx.rng);
+    const ladder = scaleLadder(LADDER, ctx.config.rounds ?? null);
+    const plan = pickPlan(ctx.content.wai, diffsFor(ctx.config, ladder), ctx.config.audience, ctx.rng, {
+      testament: ctx.config.testament,
+      custom: ctx.config.customQuestions?.wai,
+      customMode: ctx.config.customMode,
+    });
     const s: State = { phase: mkPhase('clue1', ctx.now(), 0), round: 1, rounds: plan.length, plan, options: [], answers: {}, gain: {}, correctCount: 0, scores: {} };
     return startRound(s, ctx, 1);
   },
@@ -82,7 +88,8 @@ export const whoAmI: GameModule<State> = {
       // clue index is read from the phase at server receive time, never from the client
       const correct = choice === subject(s).name;
       const answers = { ...s.answers, [a.playerId]: { choice, at: a.receivedAt, clueStartedAt: s.phase.startedAt, clueIndex: ci, correct } };
-      const scores = correct ? s.scores : { ...s.scores, [a.playerId]: Math.max(0, (s.scores[a.playerId] ?? 0) - WAI_PENALTY) };
+      const penalty = ctx.config.wrongPenalty ?? WAI_PENALTY;
+      const scores = correct ? s.scores : { ...s.scores, [a.playerId]: Math.max(0, (s.scores[a.playerId] ?? 0) - penalty) };
       const next = { ...s, answers, scores };
       return ok(Object.keys(answers).length >= activeIds(ctx).length ? toReveal(next, ctx) : next);
     }

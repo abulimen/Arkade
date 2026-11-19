@@ -14,6 +14,7 @@ import { Button, ConnectionPill, PhaseBanner, PlayerChip, TimerRing, Toast, View
 import { Icon } from '@/ui/icons';
 import { QRPanel } from '@/ui/qr';
 import ScreenRoot, { type RoomUrls } from '@/features/screen/ScreenRoot';
+import CountdownStage from '@/features/games/CountdownStage';
 import type { McProps } from '@/features/games/types';
 import SpotWolfMc from '@/features/games/spot-the-wolf/Mc';
 import FakeVerseMc from '@/features/games/fake-verse/Mc';
@@ -176,8 +177,8 @@ export default function McConsole({ code }: { code: string }) {
   const wolf = view.gameId === 'spot-the-wolf';
   const stageOk = !wolf || stage.length === 0 || (stage.length >= need && stage.length <= 10);
   const canStart = wolf ? (stage.length > 0 ? stageOk : view.count.connected >= need) : view.count.connected >= need;
-  const activeMc = McUI[view.gameId];
-  const ActiveMc = activeMc;
+  const isCountdown = view.phase === 'countdown';
+  const ActiveMc = isCountdown ? null : McUI[view.gameId];
   const joinUrl = urls?.join ?? `/j/${code}`;
   const shortUrl = urls?.short ?? `/j/${code}`;
 
@@ -279,7 +280,15 @@ export default function McConsole({ code }: { code: string }) {
             {/* Active Phase & Host Teleprompter */}
             <section className="arcade-panel p-5 space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <PhaseBanner>{view.status === 'lobby' ? 'Lobby Staging' : view.status === 'paused' ? 'Show Paused' : view.phase}</PhaseBanner>
+                <PhaseBanner>
+                  {view.status === 'lobby'
+                    ? 'Lobby Staging'
+                    : view.status === 'paused'
+                      ? 'Show Paused'
+                      : isCountdown
+                        ? 'Launch Countdown'
+                        : view.phase}
+                </PhaseBanner>
                 <TimerRing endsAt={view.endsAt} pausedMs={view.pausedMs} size={64} />
               </div>
 
@@ -356,7 +365,11 @@ export default function McConsole({ code }: { code: string }) {
               {/* Active Game-Specific MC Panel */}
               {view.status !== 'lobby' && view.status !== 'results' && (
                 <div className="pt-1">
-                  <ActiveMc view={view} mc={run} />
+                  {isCountdown || !ActiveMc ? (
+                    <CountdownStage view={view} surface="mc" preview />
+                  ) : (
+                    <ActiveMc view={view} mc={run} />
+                  )}
                 </div>
               )}
 
@@ -374,14 +387,15 @@ export default function McConsole({ code }: { code: string }) {
                   ) : null}
 
                   {view.status === 'playing' && (
-                    <>
-                      <Button variant="ghost" small onClick={() => run('ADD_TIME', { seconds: 15 })}>
-                        <Icon n="plus" size={16} /> <span>+15s</span>
-                      </Button>
-                      <Button variant="ghost" small onClick={() => run('SKIP')}>
-                        <Icon n="skip" size={16} /> <span>Skip</span>
-                      </Button>
-                    </>
+                    <Button variant="ghost" small onClick={() => run('ADD_TIME', { seconds: 15 })}>
+                      <Icon n="plus" size={16} /> <span>+15s</span>
+                    </Button>
+                  )}
+
+                  {(view.status === 'playing' || (isCountdown && view.status === 'paused')) && (
+                    <Button variant="ghost" small onClick={() => run('SKIP')}>
+                      <Icon n="skip" size={16} /> <span>Skip</span>
+                    </Button>
                   )}
 
                   {info.controls.includes('next') && (
@@ -396,7 +410,7 @@ export default function McConsole({ code }: { code: string }) {
                     </Button>
                   )}
 
-                  {view.status !== 'results' && (
+                  {view.status !== 'results' && !isCountdown && (
                     <Button
                       variant="danger"
                       small

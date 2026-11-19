@@ -1,10 +1,22 @@
 import { DEFAULT_CONFIG } from '@/shared/types';
 import type { GameConfig, GameId, Player, View } from '@/shared/types';
-import { Room, hashKey } from '@/server/rooms/Room';
+import { Room, hashKey, type RoomOpts } from '@/server/rooms/Room';
 
-export function mkRoom(gameId: GameId, n: number, cfg: Partial<GameConfig> = {}, seed = 7) {
+export function mkRoom(
+  gameId: GameId,
+  n: number,
+  cfg: Partial<GameConfig> = {},
+  seed = 7,
+  opts: Partial<RoomOpts> = {},
+) {
   const clock = { t: 1_000_000, now() { return this.t; }, adv(ms: number) { this.t += ms; } };
-  const room = new Room('TEST', gameId, { ...DEFAULT_CONFIG, ...cfg }, hashKey('host-key'), { now: () => clock.t, seed });
+  const room = new Room(
+    'TEST',
+    gameId,
+    { ...DEFAULT_CONFIG, ...cfg },
+    hashKey('host-key'),
+    { now: () => clock.t, seed, skipCountdown: true, ...opts },
+  );
   const bots: Player[] = [];
   for (let i = 0; i < n; i++) {
     const r = room.join({ nickname: `Bot${i + 1}` });

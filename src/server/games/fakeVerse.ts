@@ -2,9 +2,9 @@ import type { FvItem } from '@/shared/schemas';
 import type { Difficulty } from '@/shared/types';
 import { END, activeIds, fail, isPlayer, mkPhase, nick, ok, sec } from '../engine/kit';
 import type { GameCtx, GameModule, GameStateBase, ModView } from '../engine/kit';
-import { FV_PER_VOTE, FV_TRUTH, fvMultiplier } from '../engine/scoring';
+import { FV_PER_VOTE, FV_TRUTH } from '../engine/scoring';
 import { cleanText, isBlocked, norm, tooClose } from '../engine/text';
-import { diffsFor, pickPlan } from '../content';
+import { diffsFor, pickPlan, scaleLadder } from '../content';
 
 const LADDER: Difficulty[] = ['easy', 'easy', 'medium', 'medium', 'medium', 'hard'];
 
@@ -29,8 +29,15 @@ export interface State extends GameStateBase {
 
 const item = (s: State) => s.plan[s.round - 1];
 
+function roundMultiplier(round: number, totalRounds: number, doubleFinalRounds: boolean): 1 | 2 {
+  if (!doubleFinalRounds) return 1;
+  if (totalRounds >= 3) return round >= totalRounds - 1 ? 2 : 1;
+  return round === totalRounds ? 2 : 1;
+}
+
 function startRound(s: State, ctx: GameCtx, round: number): State {
-  return { ...s, round, multiplier: fvMultiplier(round) as 1 | 2, lies: {}, hidden: [], options: [], votes: {}, result: null, phase: mkPhase('prompt', ctx.now(), sec(ctx, 10)) };
+  const multiplier = roundMultiplier(round, s.rounds, ctx.config.doubleFinalRounds ?? true);
+  return { ...s, round, multiplier, lies: {}, hidden: [], options: [], votes: {}, result: null, phase: mkPhase('prompt', ctx.now(), sec(ctx, 10)) };
 }
 
 /** Merge duplicates, add decoys, cap at 8 sampled lies when more than 10, then shuffle with the seeded RNG. */
@@ -44,7 +51,10 @@ export function buildOptions(it: FvItem, lies: State['lies'], hidden: string[], 
   }
   let list = [...groups.values()];
   if (list.length > 10) list = ctx.rng.sample(list, 8);
-  const decoys = it.decoys.filter((d) => !groups.has(norm(d)) && norm(d) !== norm(it.truth)).slice(0, 2);
+  const candidateDecoys = it.decoys.filter((d) => !groups.has(norm(d)) && norm(d) !== norm(it.truth));
+  const wantDecoys = ctx.config.showDecoys ?? true;
+  const decoyCount = wantDecoys ? 2 : 1 + list.length < 2 ? 1 : 0;
+  const decoys = candidateDecoys.slice(0, decoyCount);
   const raw: Omit<Opt, 'id'>[] = [
     { text: it.truth, kind: 'truth', authors: [] },
     ...decoys.map((text) => ({ text, kind: 'decoy' as const, authors: [] })),
@@ -54,7 +64,7 @@ export function buildOptions(it: FvItem, lies: State['lies'], hidden: string[], 
 }
 
 function toVote(s: State, ctx: GameCtx): State {
-  return { ...s, options: buildOptions(item(s), s.lies, s.hidden, ctx), votes: {}, phase: mkPhase('vote', ctx.now(), sec(ctx, 20)) };
+  return { ...s, options: buildOptions(item(s), s.lies, s.hidden, ctx), votes: {}, phase: mkPhase('vote', ctx.now(), sec(ctx, ctx.config.voteSec ?? 20)) };
 }
 
 function toReveal(s: State, ctx: GameCtx): State {
@@ -96,7 +106,7 @@ function toReveal(s: State, ctx: GameCtx): State {
 
 function advance(s: State, ctx: GameCtx): State {
   switch (s.phase.name) {
-    case 'prompt': return { ...s, phase: mkPhase('write', ctx.now(), sec(ctx, 45)) };
+    case 'prompt': return { ...s, phase: mkPhase('write', ctx.now(), sec(ctx, ctx.config.writeSec ?? 45)) };
     case 'write': return toVote(s, ctx);
     case 'vote': return toReveal(s, ctx);
     case 'reveal': return s.round < s.rounds ? startRound(s, ctx, s.round + 1) : { ...s, phase: mkPhase(END, ctx.now(), null) };
@@ -110,7 +120,12 @@ const pub = (s: State) => ({ text: item(s).text, mult: s.multiplier });
 export const fakeVerse: GameModule<State> = {
   id: 'fake-verse',
   createState(ctx) {
-    const plan = pickPlan(ctx.content.fv, diffsFor(ctx.config, LADDER), ctx.config.audience, ctx.rng);
+    const ladder = scaleLadder(LADDER, ctx.config.rounds ?? null);
+    const plan = pickPlan(ctx.content.fv, diffsFor(ctx.config, ladder), ctx.config.audience, ctx.rng, {
+      testament: ctx.config.testament,
+      custom: ctx.config.customQuestions?.fv,
+      customMode: ctx.config.customMode,
+    });
     const s: State = { phase: mkPhase('prompt', ctx.now(), 0), round: 1, rounds: plan.length, plan, multiplier: 1, lies: {}, hidden: [], options: [], votes: {}, result: null, scores: {} };
     return startRound(s, ctx, 1);
   },

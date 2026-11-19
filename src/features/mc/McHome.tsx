@@ -3,7 +3,16 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DEFAULT_CONFIG, GAME_IDS, GAME_META, type GameConfig, type GameHistoryEntry, type GameId } from '@/shared/types';
+import {
+  DEFAULT_CONFIG,
+  GAME_IDS,
+  GAME_META,
+  type Audience,
+  type GameConfig,
+  type GameHistoryEntry,
+  type GameId,
+} from '@/shared/types';
+import { buildCustomQuestionsPayload } from '@/shared/customCsv';
 import { t } from '@/i18n';
 import { enableSound, haptic, playUi } from '@/client/sound';
 import { AppShell } from '@/ui/shell';
@@ -12,6 +21,11 @@ import { Button } from '@/ui/kit';
 import { Icon, type IconName } from '@/ui/icons';
 import { MascotView } from '@/ui/mascots';
 import { ConsoleFieldCanvas } from '@/ui/ConsoleFieldCanvas';
+import AdvancedOptionsPanel, {
+  EMPTY_UPLOAD,
+  SegGroup,
+  type UploadedCsvState,
+} from './AdvancedOptionsPanel';
 
 interface ResumeRoom {
   code: string;
@@ -27,10 +41,37 @@ const GAME_CARD_STYLE: Record<GameId, { gradient: string; accent: string; badge:
   'who-am-i': { gradient: 'linear-gradient(155deg, #3BE882 0%, #109E56 100%)', accent: '#38EC82', badge: '5-Clue Mystery', icon: 'star' },
 };
 
+const createEmptyUploads = (): Record<GameId, UploadedCsvState> => ({
+  'spot-the-wolf': { ...EMPTY_UPLOAD },
+  'fake-verse': { ...EMPTY_UPLOAD },
+  'gideons-300': { ...EMPTY_UPLOAD },
+  'what-came-first': { ...EMPTY_UPLOAD },
+  'who-am-i': { ...EMPTY_UPLOAD },
+});
+
+const AUDIENCE_GUIDE: { id: Audience; labelKey: string; summary: string }[] = [
+  {
+    id: 'kids',
+    labelKey: 'mc.kids',
+    summary: 'Prioritizes familiar, story-based easy questions and automatically narrows Who Am I? from 6 choices down to 4.',
+  },
+  {
+    id: 'youth',
+    labelKey: 'mc.youth',
+    summary: 'Balanced mix of stories and Scripture knowledge with standard 6 choices in Who Am I?.',
+  },
+  {
+    id: 'adults',
+    labelKey: 'mc.adults',
+    summary: 'Prioritizes deeper theology, epistles, and harder questions across packs.',
+  },
+];
+
 export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?: GameId }) {
   const router = useRouter();
   const [game, setGame] = useState<GameId>(initialGame);
   const [cfg, setCfg] = useState<GameConfig>({ ...DEFAULT_CONFIG });
+  const [uploads, setUploads] = useState<Record<GameId, UploadedCsvState>>(createEmptyUploads);
   const [resume, setResume] = useState<ResumeRoom[]>([]);
   const [history, setHistory] = useState<GameHistoryEntry[]>([]);
   const [openHistoryId, setOpenHistoryId] = useState<string | null>(null);
@@ -78,11 +119,20 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
   const meta = GAME_META[game];
   const teamAllowed = meta.modes.includes('team');
   const activeMode = teamAllowed ? cfg.mode : 'individual';
+  const activeUpload = uploads[game];
+  const customOnlyMissing = cfg.customMode === 'only' && activeUpload.items.length === 0;
 
   const pickGame = (id: GameId) => {
     playUi('ui-snap');
     haptic('snap');
     setGame(id);
+    setCfg((c) => {
+      if (c.rounds === null || id === 'gideons-300') return c;
+      const min = id === 'spot-the-wolf' ? 1 : 2;
+      const max = id === 'spot-the-wolf' ? 8 : 15;
+      const clamped = Math.min(max, Math.max(min, c.rounds));
+      return clamped === c.rounds ? c : { ...c, rounds: clamped };
+    });
     setErr(null);
   };
 
@@ -90,17 +140,46 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
     playUi('ui-focus');
     haptic('tick');
     setCfg((c) => ({ ...c, [key]: val }));
+    if (key === 'customMode') setErr(null);
+  };
+
+  const resetAdvancedDefaults = () => {
+    playUi('ui-snap');
+    haptic('snap');
+    setCfg((c) => ({
+      ...DEFAULT_CONFIG,
+      audience: c.audience,
+      difficulty: c.difficulty,
+      mode: c.mode,
+      pace: c.pace,
+    }));
+    setErr(null);
   };
 
   const create = async () => {
+    if (customOnlyMissing) {
+      playUi('ui-error');
+      haptic('error');
+      setErr(`Upload at least 1 valid CSV question for ${meta.name}, or switch back to "Mix with Arkade".`);
+      return;
+    }
     void enableSound();
     setBusy(true);
     setErr(null);
     try {
+      const payloadConfig: GameConfig = {
+        ...cfg,
+        mode: activeMode,
+      };
+      if (activeUpload.items.length >= 1) {
+        payloadConfig.customQuestions = buildCustomQuestionsPayload(game, activeUpload.items);
+      } else {
+        delete payloadConfig.customQuestions;
+      }
       const r = await fetch('/api/rooms', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ gameId: game, config: { ...cfg, mode: activeMode } }),
+        body: JSON.stringify({ gameId: game, config: payloadConfig }),
       });
       const j = await r.json();
       if (!r.ok) {
@@ -141,7 +220,9 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
               <Icon n="sliders" size={13} /> {t('mc.badge')}
             </div>
             <h1 className="font-bold text-white fs-h1 leading-tight">{t('mc.newRoom')}</h1>
-            <p className="text-sm text-slate">Pick a game, choose Kids or Youth mode, and start your room.</p>
+            <p className="text-sm text-slate">
+              Pick a game, choose Kids, Youth, or Adults mode, customize rules, or upload your own CSV questions.
+            </p>
           </div>
 
           {resume.length > 0 && (
@@ -247,27 +328,66 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <SegGroup
-                label={t('mc.audience')}
-                value={cfg.audience}
-                onChange={(v) => setField('audience', v)}
-                options={[
-                  ['kids', t('mc.kids')],
-                  ['youth', t('mc.youth')],
-                  ['adults', t('mc.adults')],
-                ]}
-              />
-              <SegGroup
-                label={t('mc.difficulty')}
-                value={cfg.difficulty}
-                onChange={(v) => setField('difficulty', v)}
-                options={[
-                  ['mixed', t('mc.mixed')],
-                  ['easy', t('mc.easy')],
-                  ['medium', t('mc.medium')],
-                  ['hard', t('mc.hard')],
-                ]}
-              />
+              <div className="sm:col-span-2 space-y-2.5">
+                <SegGroup
+                  label={t('mc.audience')}
+                  value={cfg.audience}
+                  onChange={(v) => setField('audience', v)}
+                  options={[
+                    ['kids', t('mc.kids')],
+                    ['youth', t('mc.youth')],
+                    ['adults', t('mc.adults')],
+                  ]}
+                />
+                <div className="rounded-2xl border border-white/10 bg-night-3/65 p-3.5 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-white">
+                    <Icon n="info" size={14} className="text-sky shrink-0" />
+                    <span>How Audience Packs Work</span>
+                  </div>
+                  <ul className="space-y-1.5 text-xs leading-relaxed">
+                    {AUDIENCE_GUIDE.map((tier) => {
+                      const selected = cfg.audience === tier.id;
+                      return (
+                        <li
+                          key={tier.id}
+                          className={`flex flex-wrap sm:flex-nowrap items-baseline gap-2 rounded-xl px-2.5 py-1.5 transition-colors ${
+                            selected ? 'border border-gold/35 bg-gold/10 text-white' : 'text-cloud/80'
+                          }`}
+                        >
+                          <span
+                            className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider ${
+                              selected ? 'bg-gold text-night' : 'bg-white/10 text-cloud'
+                            }`}
+                          >
+                            {t(tier.labelKey)}
+                          </span>
+                          <span>{tier.summary}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="border-t border-white/8 pt-2 text-[11px] text-cloud/80 leading-relaxed">
+                    <strong className="text-white">Battle Royale</strong> &amp; <strong className="text-white">Spot the Wolf</strong> share{' '}
+                    <code className="text-gold">medium</code>/<code className="text-gold">hard</code> pools between Youth and Adults, and{' '}
+                    <strong className="text-white">Advanced Options</strong> below lets you directly override any rule.
+                  </p>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2">
+                <SegGroup
+                  label={t('mc.difficulty')}
+                  value={cfg.difficulty}
+                  onChange={(v) => setField('difficulty', v)}
+                  options={[
+                    ['mixed', t('mc.mixed')],
+                    ['easy', t('mc.easy')],
+                    ['medium', t('mc.medium')],
+                    ['hard', t('mc.hard')],
+                  ]}
+                />
+              </div>
+
               <SegGroup
                 label={t('mc.mode')}
                 value={activeMode}
@@ -290,60 +410,21 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
               />
             </div>
 
-            {/* Game-specific hardware racks */}
-            {game === 'gideons-300' && (
-              <div className="rounded-2xl border border-white/10 bg-night-3/70 p-4 grid gap-4 sm:grid-cols-3">
-                <RangeTile
-                  label={t('mc.keep1', { n: Math.round(cfg.keep1 * 100) })}
-                  min={40}
-                  max={100}
-                  step={5}
-                  value={Math.round(cfg.keep1 * 100)}
-                  onChange={(n) => setField('keep1', n / 100)}
-                />
-                <RangeTile
-                  label={t('mc.keep2', { n: Math.round(cfg.keep2 * 100) })}
-                  min={10}
-                  max={60}
-                  step={5}
-                  value={Math.round(cfg.keep2 * 100)}
-                  onChange={(n) => setField('keep2', n / 100)}
-                />
-                <RangeTile
-                  label={t('mc.finalists', { n: cfg.finalists })}
-                  min={2}
-                  max={20}
-                  step={1}
-                  value={cfg.finalists}
-                  onChange={(n) => setField('finalists', n)}
-                />
-              </div>
-            )}
-
-            {game === 'spot-the-wolf' && (
-              <div className="rounded-2xl border border-white/10 bg-night-3/70 p-4 flex flex-wrap items-center justify-between gap-4">
-                <SegGroup
-                  label={t('mc.wolves')}
-                  value={cfg.wolves === null ? 'auto' : String(cfg.wolves)}
-                  onChange={(v) => setField('wolves', v === 'auto' ? null : (Number(v) as 1 | 2 | 3))}
-                  options={[
-                    ['auto', t('mc.auto')],
-                    ['1', '1'],
-                    ['2', '2'],
-                    ['3', '3'],
-                  ]}
-                />
-                <label className="cursor-pointer inline-flex items-center gap-3 rounded-2xl border border-white/12 bg-night-2 px-4 py-3 text-sm font-semibold text-white">
-                  <input
-                    type="checkbox"
-                    checked={cfg.lookalike}
-                    onChange={(e) => setField('lookalike', e.target.checked)}
-                    className="h-5 w-5 accent-gold cursor-pointer"
-                  />
-                  <span>{t('mc.lookalike')}</span>
-                </label>
-              </div>
-            )}
+            <AdvancedOptionsPanel
+              game={game}
+              cfg={cfg}
+              setField={setField}
+              uploaded={activeUpload}
+              onCsvLoaded={(next) => {
+                setUploads((prev) => ({ ...prev, [game]: next }));
+                setErr(null);
+              }}
+              onCsvCleared={() => {
+                setUploads((prev) => ({ ...prev, [game]: { ...EMPTY_UPLOAD } }));
+                setErr(null);
+              }}
+              onResetDefaults={resetAdvancedDefaults}
+            />
           </div>
 
           {/* Right Launch Cartridge */}
@@ -367,16 +448,26 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
                   {t('mc.minutes', { a: meta.est[0], b: meta.est[1] })} · {t('mc.minPlayers', { n: meta.minPlayers })} ·{' '}
                   {t(activeMode === 'team' ? 'mc.team' : 'mc.individual')}
                 </p>
+                {activeUpload.items.length > 0 && (
+                  <p className="text-[11px] font-bold text-leaf mt-1">
+                    {activeUpload.items.length} custom CSV {activeUpload.items.length === 1 ? 'question' : 'questions'} ({cfg.customMode === 'only' ? 'Custom Only' : 'Mixed'})
+                  </p>
+                )}
               </div>
             </div>
 
             <div className="relative z-10 space-y-3">
+              {customOnlyMissing && (
+                <div role="alert" className="rounded-2xl border border-coral/45 bg-coral/12 px-4 py-2.5 text-xs font-semibold text-white">
+                  <strong className="text-coral">Custom Only mode:</strong> Upload at least 1 valid CSV question for {meta.name} in Advanced Options, or switch back to Mix with Arkade.
+                </div>
+              )}
               {err && (
                 <div role="alert" className="rounded-2xl border border-coral/40 bg-coral/12 px-4 py-2.5 text-sm font-semibold text-coral">
                   {err}
                 </div>
               )}
-              <Button type="button" variant="primary" loading={busy} onClick={create} className="w-full">
+              <Button type="button" variant="primary" loading={busy} disabled={customOnlyMissing} onClick={create} className="w-full">
                 <Icon n="play" size={18} />
                 <span>{t('mc.create')}</span>
               </Button>
@@ -486,77 +577,5 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
         </section>
       </div>
     </AppShell>
-  );
-}
-
-function SegGroup<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  disabled = false,
-}: {
-  label: string;
-  value: T;
-  options: [T, string][];
-  onChange: (v: T) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="text-xs font-bold uppercase tracking-widest text-slate">{label}</div>
-      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-white/10 bg-night-3/80 p-1.5">
-        {options.map(([v, text]) => {
-          const active = value === v;
-          return (
-            <button
-              key={v}
-              type="button"
-              disabled={disabled}
-              aria-pressed={active}
-              onClick={() => onChange(v)}
-              className={`cursor-pointer flex-1 min-h-10 rounded-xl px-3 py-1.5 text-xs font-bold transition-all disabled:opacity-45 disabled:cursor-not-allowed ${
-                active
-                  ? 'bg-gold text-night shadow-[0_4px_14px_-2px_rgba(255,208,38,0.45)]'
-                  : 'text-cloud hover:bg-white/8 hover:text-white'
-              }`}
-            >
-              {text}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function RangeTile({
-  label,
-  min,
-  max,
-  step,
-  value,
-  onChange,
-}: {
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  onChange: (n: number) => void;
-}) {
-  return (
-    <label className="block space-y-2 cursor-pointer">
-      <div className="text-xs font-bold text-cloud">{label}</div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-gold cursor-pointer"
-      />
-    </label>
   );
 }

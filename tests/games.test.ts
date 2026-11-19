@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Player } from '@/shared/types';
+import { GAME_IDS, type GameId, type Player } from '@/shared/types';
+import { CSV_TEMPLATES, buildCustomQuestionsPayload, parseGameCsv } from '@/shared/customCsv';
 import { act, j, mkRoom, skip, views } from './helpers';
 import type { Room } from '@/server/rooms/Room';
 
@@ -522,6 +523,319 @@ describe('Spot the Wolf', () => {
     expect(screenView.data.clues[0]).toEqual({ pid: timedOutPid, round: 1, text: '', spoken: false, missed: true });
     const mcView = views(room, bots).mc;
     expect(mcView.data.mcClues[0].text).toBe('(failed to type a word)');
+    room.close();
+  });
+});
+
+function planItems(room: Room, gameId: GameId): Array<{ id: string; testament: 'OT' | 'NT' | 'both'; category?: string }> {
+  if (gameId === 'gideons-300') {
+    const p = room.game.plan as { s1: Array<{ id: string; testament: 'OT' | 'NT' | 'both' }>; s2: Array<{ id: string; testament: 'OT' | 'NT' | 'both' }>; s3: Array<{ id: string; testament: 'OT' | 'NT' | 'both' }> };
+    return [...p.s1, ...p.s2, ...p.s3];
+  }
+  return room.game.plan;
+}
+
+describe('Advanced Options: testament, rounds, and custom CSV questions', () => {
+  it.each(GAME_IDS)('filters %s questions by testament OT and NT', (gameId) => {
+    const minPlayers = gameId === 'spot-the-wolf' ? 6 : 4;
+    for (const testament of ['OT', 'NT'] as const) {
+      const { room } = mkRoom(gameId, minPlayers, { testament });
+      start(room);
+      const items = planItems(room, gameId);
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(['OT', 'NT', 'both']).toContain(item.testament);
+        expect(item.testament === testament || item.testament === 'both').toBe(true);
+        if (gameId === 'fake-verse' || gameId === 'gideons-300' || gameId === 'spot-the-wolf') {
+          expect(item.testament).toBe(testament);
+        }
+      }
+      room.close();
+    }
+  });
+
+  it('supports custom rounds for round-based games (both shorter and longer than default)', () => {
+    const cases: Array<[GameId, number, number[]]> = [
+      ['what-came-first', 2, [4, 12]],
+      ['fake-verse', 3, [3, 10]],
+      ['who-am-i', 2, [5, 11]],
+      ['spot-the-wolf', 5, [1, 5]],
+    ];
+    for (const [gameId, players, roundCounts] of cases) {
+      for (const rounds of roundCounts) {
+        const { room } = mkRoom(gameId, players, { rounds });
+        start(room);
+        expect(room.game.rounds).toBe(rounds);
+        expect(room.game.plan).toHaveLength(rounds);
+        room.close();
+      }
+    }
+  });
+
+  it.each(GAME_IDS)('customMode="only" for %s draws exclusively from customQuestions and cycles cleanly', (gameId) => {
+    const parsed = parseGameCsv(gameId, CSV_TEMPLATES[gameId].sampleCsv);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.items).toHaveLength(2);
+
+    const customQuestions = buildCustomQuestionsPayload(gameId, parsed.items);
+    const cfg = gameId === 'gideons-300'
+      ? { customQuestions, customMode: 'only' as const, s1Questions: 3, s2Questions: 3, s3Target: 2 }
+      : { customQuestions, customMode: 'only' as const, rounds: 4 };
+    const { room } = mkRoom(gameId, gameId === 'spot-the-wolf' ? 6 : 4, cfg);
+    start(room);
+
+    const items = planItems(room, gameId);
+    expect(items.length).toBe(gameId === 'gideons-300' ? 21 : 4);
+    expect(items.every((it) => it.id.startsWith('custom-'))).toBe(true);
+    for (let i = 1; i < items.length; i++) {
+      expect(items[i].id).not.toBe(items[i - 1].id);
+    }
+    room.close();
+  });
+
+  it('customMode="mix" prioritizes custom questions then fills remaining rounds from built-ins', () => {
+    for (const [gameId, rounds] of [['fake-verse', 6], ['what-came-first', 8]] as const) {
+      const parsed = parseGameCsv(gameId, CSV_TEMPLATES[gameId].sampleCsv);
+      const customQuestions = buildCustomQuestionsPayload(gameId, parsed.items);
+      const { room } = mkRoom(gameId, 4, { customQuestions, customMode: 'mix', rounds });
+      start(room);
+      const items = planItems(room, gameId);
+      expect(items).toHaveLength(rounds);
+      const customCount = items.filter((it) => it.id.startsWith('custom-')).length;
+      const builtinCount = items.filter((it) => !it.id.startsWith('custom-')).length;
+      expect(customCount).toBe(2);
+      expect(builtinCount).toBe(rounds - 2);
+      room.close();
+    }
+  });
+
+  it('PRIVACY: viewFor() never exposes raw customQuestions or customMode in lobby, countdown, or gameplay', () => {
+    const parsed = parseGameCsv('fake-verse', CSV_TEMPLATES['fake-verse'].sampleCsv);
+    const customQuestions = buildCustomQuestionsPayload('fake-verse', parsed.items);
+    const { room, bots } = mkRoom('fake-verse', 4, { customQuestions, customMode: 'only', rounds: 2 }, 7, { skipCountdown: false });
+
+    const assertNoLeak = () => {
+      const v = views(room, bots);
+      for (const view of [v.screen, v.mc, ...v.players]) {
+        const s = j(view);
+        expect(s).not.toContain('customQuestions');
+        expect(s).not.toContain('customMode');
+        expect(s).not.toContain('"decoys"');
+      }
+    };
+
+    assertNoLeak(); // lobby
+    start(room);
+    expect(room.viewFor({ role: 'screen' }).phase).toBe('countdown');
+    assertNoLeak(); // countdown
+    // Neither custom question prompt or secret answer should appear during countdown
+    for (const view of [views(room, bots).screen, views(room, bots).mc, ...views(room, bots).players]) {
+      const s = j(view);
+      expect(s).not.toContain('Zacchaeus');
+      expect(s).not.toContain('sycamore');
+      expect(s).not.toContain('ravens');
+    }
+
+    skip(room); // countdown -> round 1 prompt
+    assertNoLeak();
+    // Round 2 secret answer must not leak during round 1
+    const r2Secret = room.game.plan[1].truth as string;
+    for (const view of [views(room, bots).screen, views(room, bots).mc, ...views(room, bots).players]) {
+      expect(j(view)).not.toContain(r2Secret);
+    }
+    room.close();
+  });
+});
+
+describe('Game-specific Advanced Options', () => {
+  it("Gideon's 300: honors s1Questions, s2Questions, s3Target, and questionSec", () => {
+    const { room, bots } = mkRoom('gideons-300', 8, {
+      s1Questions: 3,
+      s2Questions: 4,
+      s3Target: 3,
+      questionSec: 22,
+    });
+    start(room);
+    expect(room.game.plan.s1).toHaveLength(3);
+    expect(room.game.plan.s2).toHaveLength(4);
+    expect(room.game.target).toBe(3);
+
+    skip(room); // intro -> s1q #1
+    expect(room.game.phase.name).toBe('s1q');
+    expect(room.game.phase.endsAt - room.game.phase.startedAt).toBe(22_000);
+    for (let q = 0; q < 3; q++) {
+      const alive = bots.filter((b) => room.game.alive.includes(b.id));
+      const correct = room.game.plan.s1[q].correct;
+      alive.forEach((b, i) => act(room, b, 'ANSWER', { choice: i < 5 ? correct : (correct + 1) % 4 }));
+      expect(room.game.phase.name).toBe('s1r');
+      skip(room);
+    }
+    expect(room.game.phase.name).toBe('s1cut');
+
+    skip(room); // s1cut -> s2q #1
+    expect(room.game.phase.name).toBe('s2q');
+    expect(room.game.phase.endsAt - room.game.phase.startedAt).toBe(22_000);
+    for (let q = 0; q < 4; q++) {
+      const alive = bots.filter((b) => room.game.alive.includes(b.id));
+      const correct = room.game.plan.s2[q].correct;
+      alive.forEach((b, i) => act(room, b, 'ANSWER', { choice: i < 2 ? correct : (correct + 1) % 4 }));
+      expect(room.game.phase.name).toBe('s2r');
+      skip(room);
+    }
+    expect(room.game.phase.name).toBe('s2cut');
+
+    skip(room); // s2cut -> s3pre
+    expect(room.game.phase.name).toBe('s3pre');
+    expect(views(room, bots).screen.data.target).toBe(3);
+
+    const finalist = bots.find((b) => b.id === room.game.finalists[0])!;
+    for (let pt = 0; pt < 3; pt++) {
+      skip(room); // s3pre -> s3q
+      expect(room.game.phase.name).toBe('s3q');
+      expect(room.game.phase.endsAt - room.game.phase.startedAt).toBe(22_000);
+      const correct = room.game.plan.s3[room.game.qIndex].correct;
+      expect(act(room, finalist, 'BUZZ', { choice: correct }).ok).toBe(true);
+      expect(room.game.phase.name).toBe('s3r');
+      skip(room);
+    }
+    expect(room.game.phase.name).toBe('end');
+    expect(room.game.champion).toBe(finalist.id);
+    expect(room.game.finalPoints[finalist.id]).toBe(3);
+    room.close();
+  });
+
+  it('Spot the Wolf: honors clueRounds=1, allowWolfGuess=false, wolfCategories, and debateSec', () => {
+    const allowedCats = ['Animal', 'Miracle'];
+    const { room, bots } = mkRoom('spot-the-wolf', 6, {
+      clueRounds: 1,
+      allowWolfGuess: false,
+      wolfCategories: allowedCats,
+      debateSec: 120,
+      rounds: 2,
+    });
+    start(room);
+    for (const w of room.game.plan) {
+      expect(allowedCats).toContain(w.category);
+    }
+
+    const g = () => room.game;
+    const wolf = g().wolves[0] as string;
+    const byId = (id: string) => bots.find((b) => b.id === id)!;
+    skip(room); // reveal -> clues1
+    expect(g().phase.name).toBe('clues1');
+
+    for (const pid of g().turnOrder as string[]) {
+      expect(act(room, byId(pid), 'CLUE', { text: 'hint' }).ok).toBe(true);
+    }
+    // clueRounds: 1 skips clues2 directly to debate with configured debateSec
+    expect(g().phase.name).toBe('debate');
+    expect(g().phase.endsAt - g().phase.startedAt).toBe(120_000);
+
+    skip(room); // debate -> vote
+    expect(g().phase.name).toBe('vote');
+    const flock = g().stage.filter((id: string) => id !== wolf) as string[];
+    flock.forEach((id) => act(room, byId(id), 'VOTE', { target: wolf }));
+    act(room, byId(wolf), 'VOTE', { target: flock[0] });
+    skip(room); // vote -> accuse
+    expect(g().phase.name).toBe('accuse');
+    expect(g().caught).toEqual([wolf]);
+
+    skip(room); // accuse -> roundEnd directly (allowWolfGuess: false skips 'guess')
+    expect(g().phase.name).toBe('roundEnd');
+    expect(g().outcome).toBe('flock');
+    room.close();
+  });
+
+  it('Fake Verse: honors doubleFinalRounds=false, showDecoys=false, writeSec, and voteSec', () => {
+    const { room, bots } = mkRoom('fake-verse', 3, {
+      doubleFinalRounds: false,
+      showDecoys: false,
+      writeSec: 75,
+      voteSec: 35,
+    });
+    start(room);
+
+    // Round 1: 0 lies submitted -> falls back to 1 decoy so voting has 2 options
+    skip(room); // prompt -> write
+    expect(room.game.phase.name).toBe('write');
+    expect(room.game.phase.endsAt - room.game.phase.startedAt).toBe(75_000);
+    skip(room); // write -> vote (0 lies)
+    expect(room.game.phase.name).toBe('vote');
+    expect(room.game.phase.endsAt - room.game.phase.startedAt).toBe(35_000);
+    expect(room.game.options.filter((o: { kind: string }) => o.kind === 'decoy')).toHaveLength(1);
+    skip(room); // vote -> reveal
+    skip(room); // reveal -> round 2 prompt
+
+    // Round 2: >=1 lie submitted with showDecoys=false -> 0 decoys
+    skip(room); // prompt -> write
+    expect(act(room, bots[0], 'WRITE', { text: 'My custom fake answer' }).ok).toBe(true);
+    skip(room); // write -> vote
+    expect(room.game.options.filter((o: { kind: string }) => o.kind === 'decoy')).toHaveLength(0);
+    expect(room.game.options).toHaveLength(2);
+
+    // Advance to round 5 (normally 2x): multiplier stays 1 when doubleFinalRounds=false
+    while (room.game.round < 5) skip(room);
+    expect(room.game.round).toBe(5);
+    expect(room.game.multiplier).toBe(1);
+    skip(room); // prompt -> write
+    skip(room); // write -> vote
+    const truth = room.game.options.find((o: { kind: string }) => o.kind === 'truth');
+    const scoreBefore = room.game.scores[bots[0].id] ?? 0;
+    act(room, bots[0], 'VOTE', { target: truth.id });
+    skip(room); // vote -> reveal
+    expect(room.game.scores[bots[0].id] - scoreBefore).toBe(500);
+    room.close();
+  });
+
+  it('Who Am I?: honors wrongPenalty=0, custom wrongPenalty, optionCount (4 and 6), and clueSec', () => {
+    // optionCount: 4 overrides adults default of 6; clueSec: 18; wrongPenalty: 0
+    const r4 = mkRoom('who-am-i', 2, { audience: 'adults', optionCount: 4, clueSec: 18, wrongPenalty: 0 });
+    start(r4.room);
+    expect(r4.room.game.options).toHaveLength(4);
+    expect(r4.room.game.phase.endsAt - r4.room.game.phase.startedAt).toBe(18_000);
+
+    const name1 = r4.room.game.plan[0].name as string;
+    const wrong1 = r4.room.game.options.find((o: string) => o !== name1) as string;
+    expect(act(r4.room, r4.bots[0], 'ANSWER', { choice: name1 }).ok).toBe(true); // +500
+    skip(r4.room); // clue1 -> clue2
+    expect(r4.room.game.phase.name).toBe('clue2');
+    expect(r4.room.game.phase.endsAt - r4.room.game.phase.startedAt).toBe(18_000);
+    expect(act(r4.room, r4.bots[1], 'ANSWER', { choice: wrong1 }).ok).toBe(true); // both answered -> reveal
+    expect(r4.room.game.phase.name).toBe('reveal');
+    expect(r4.room.game.scores[r4.bots[0].id]).toBe(500);
+    expect(r4.room.game.scores[r4.bots[1].id]).toBe(0);
+
+    // Round 2: bot0 answers wrong with wrongPenalty: 0 -> stays 500
+    skip(r4.room); // reveal -> round 2 clue1
+    const name2 = r4.room.game.plan[1].name as string;
+    const wrong2 = r4.room.game.options.find((o: string) => o !== name2) as string;
+    expect(act(r4.room, r4.bots[0], 'ANSWER', { choice: wrong2 }).ok).toBe(true);
+    expect(r4.room.game.scores[r4.bots[0].id]).toBe(500);
+    r4.room.close();
+
+    // optionCount: 6 overrides kids default of 4; custom wrongPenalty: 100 deducts 100
+    const r6 = mkRoom('who-am-i', 2, { audience: 'kids', optionCount: 6, wrongPenalty: 100 });
+    start(r6.room);
+    expect(r6.room.game.options).toHaveLength(6);
+    const r6Name1 = r6.room.game.plan[0].name as string;
+    const r6Wrong1 = r6.room.game.options.find((o: string) => o !== r6Name1) as string;
+    expect(act(r6.room, r6.bots[0], 'ANSWER', { choice: r6Name1 }).ok).toBe(true); // +500
+    expect(act(r6.room, r6.bots[1], 'ANSWER', { choice: r6Wrong1 }).ok).toBe(true); // clamp 0 -> reveal
+    skip(r6.room); // reveal -> round 2 clue1
+    const r6Name2 = r6.room.game.plan[1].name as string;
+    const r6Wrong2 = r6.room.game.options.find((o: string) => o !== r6Name2) as string;
+    expect(act(r6.room, r6.bots[0], 'ANSWER', { choice: r6Wrong2 }).ok).toBe(true);
+    expect(r6.room.game.scores[r6.bots[0].id]).toBe(400);
+    r6.room.close();
+  });
+
+  it('What Came First?: honors orderSec', () => {
+    const { room } = mkRoom('what-came-first', 2, { orderSec: 65 });
+    start(room);
+    expect(room.game.phase.name).toBe('prompt');
+    skip(room); // prompt -> order
+    expect(room.game.phase.name).toBe('order');
+    expect(room.game.phase.endsAt - room.game.phase.startedAt).toBe(65_000);
     room.close();
   });
 });

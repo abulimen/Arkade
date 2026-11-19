@@ -22,6 +22,7 @@ import {
 } from '@/ui/kit';
 import { MascotView } from '@/ui/mascots';
 import { SensoryPill } from '@/ui/shell';
+import CountdownStage from '@/features/games/CountdownStage';
 import type { PlayerProps } from '@/features/games/types';
 import { storeKey } from '../lobby/Join';
 import SpotWolfPlayer from '@/features/games/spot-the-wolf/Player';
@@ -31,6 +32,7 @@ import WcfPlayer from '@/features/games/what-came-first/Player';
 import WhoAmIPlayer from '@/features/games/who-am-i/Player';
 
 export const phaseTitle = (v: View) => {
+  if (v.phase === 'countdown') return t('phase.countdown');
   const specific = `ph.${v.gameId}.${v.phase}`;
   const trSpec = t(specific);
   if (trSpec !== specific) return trSpec;
@@ -186,7 +188,8 @@ export default function PlayerRoot({ code }: { code: string }) {
 
   const me = view.me;
   const meta = GAME_META[view.gameId];
-  const ActivePlayer = PlayerUI[view.gameId];
+  const isCountdown = view.phase === 'countdown';
+  const ActivePlayer = isCountdown ? null : PlayerUI[view.gameId];
   const showLeaderboard = view.gameId !== 'spot-the-wolf';
 
   return (
@@ -314,13 +317,17 @@ export default function PlayerRoot({ code }: { code: string }) {
               </div>
             </div>
           </div>
+        ) : isCountdown ? (
+          <div className="flex-1 flex flex-col justify-center">
+            <CountdownStage view={view} surface="player" />
+          </div>
         ) : view.status === 'results' && showLeaderboard ? (
           <PlayerEnd view={view} />
-        ) : (
+        ) : ActivePlayer ? (
           <div className="flex-1 flex flex-col">
             <ActivePlayer view={view} send={send} notify={notify} />
           </div>
-        )}
+        ) : null}
       </main>
 
       {/* Bottom Sticky Battleground Rank Strip (inspiration: leaderboard.jpg You #Rank pill) */}

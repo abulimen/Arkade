@@ -3,7 +3,7 @@ import type { Difficulty } from '@/shared/types';
 import { END, fail, mkPhase, ok, pubOf, sec } from '../engine/kit';
 import type { GameCtx, GameModule, GameStateBase, ModView } from '../engine/kit';
 import { G_CORRECT, G_POINT, G_SPEED, G_TARGET, G_WATCHMAN, G_WINNER, keepCount, rankIds, tenthsPenalty } from '../engine/scoring';
-import { diffsFor, pickPlan } from '../content';
+import { diffsFor, pickPlan, scaleLadder } from '../content';
 
 const S1: Difficulty[] = ['easy', 'easy', 'easy', 'medium', 'medium', 'medium'];
 const S2: Difficulty[] = ['medium', 'medium', 'medium', 'medium', 'medium', 'medium'];
@@ -29,6 +29,7 @@ export interface State extends GameStateBase {
   keep1: number;
   keep2: number;
   finalistCount: number;
+  target: number;
 }
 
 const list = (s: State) => (s.stage === 1 ? s.plan.s1 : s.stage === 2 ? s.plan.s2 : s.plan.s3);
@@ -37,7 +38,8 @@ const qWindow = (stage: number) => (stage === 1 ? 15 : stage === 2 ? 10 : 15);
 const aliveConnected = (s: State, ctx: GameCtx) => s.alive.filter((id) => ctx.players[id]?.connected);
 
 function startQ(s: State, ctx: GameCtx, stage: 1 | 2 | 3, qIndex: number): State {
-  return { ...s, stage, qIndex, answers: {}, frozen: [], gain: {}, phase: mkPhase(`s${stage}q`, ctx.now(), sec(ctx, qWindow(stage))) };
+  const windowSec = ctx.config.questionSec ?? qWindow(stage);
+  return { ...s, stage, qIndex, answers: {}, frozen: [], gain: {}, phase: mkPhase(`s${stage}q`, ctx.now(), sec(ctx, windowSec)) };
 }
 
 function scoreQ(s: State, ctx: GameCtx): State {
@@ -80,7 +82,7 @@ function toS3Result(s: State, ctx: GameCtx, winner: string | null): State {
   if (winner) {
     finalPoints[winner] = (finalPoints[winner] ?? 0) + 1;
     scores[winner] = (scores[winner] ?? 0) + G_POINT;
-    if (finalPoints[winner] >= G_TARGET) champion = winner;
+    if (finalPoints[winner] >= (s.target ?? G_TARGET)) champion = winner;
   }
   for (const [pid, pick] of Object.entries(s.predictions)) {
     if (pick === key) {
@@ -151,7 +153,7 @@ function common(s: State, ctx: GameCtx) {
   const p = s.phase.name;
   const inQ = p === 's1q' || p === 's2q' || p === 's3q';
   const inR = p === 's1r' || p === 's2r' || p === 's3r';
-  const d: Record<string, unknown> = { stage: s.stage, n: s.qIndex + 1, of: s.stage === 3 ? s.plan.s3.length : 6, target: G_TARGET, counts: { alive: s.alive.length, started: s.started.length, finalists: s.finalists.length } };
+  const d: Record<string, unknown> = { stage: s.stage, n: s.qIndex + 1, of: list(s).length, target: s.target ?? G_TARGET, counts: { alive: s.alive.length, started: s.started.length, finalists: s.finalists.length } };
   if (inQ || p === 's3pre') d.q = p === 's3pre' ? null : qPub(s);
   if (inQ) d.answered = Object.keys(s.answers).length;
   if (inQ) d.total = s.stage === 3 ? s.finalists.length : aliveConnected(s, ctx).length;
@@ -167,15 +169,27 @@ export const gideons300: GameModule<State> = {
   id: 'gideons-300',
   createState(ctx, _opts) {
     void _opts;
-    const diffs = [...diffsFor(ctx.config, S1), ...diffsFor(ctx.config, S2), ...diffsFor(ctx.config, S3)];
-    const all = pickPlan(ctx.content.g300, diffs, ctx.config.audience, ctx.rng);
+    const s1Count = ctx.config.s1Questions ?? 6;
+    const s2Count = ctx.config.s2Questions ?? 6;
+    const target = ctx.config.s3Target ?? G_TARGET;
+    const s3Ladder = target > 5 ? Array.from({ length: target * 3 }, (_, i) => (i % 2 === 0 ? 'hard' : 'medium') as Difficulty) : S3;
+    const diffs = [
+      ...diffsFor(ctx.config, scaleLadder(S1, s1Count)),
+      ...diffsFor(ctx.config, scaleLadder(S2, s2Count)),
+      ...diffsFor(ctx.config, s3Ladder),
+    ];
+    const all = pickPlan(ctx.content.g300, diffs, ctx.config.audience, ctx.rng, {
+      testament: ctx.config.testament,
+      custom: ctx.config.customQuestions?.g300,
+      customMode: ctx.config.customMode,
+    });
     const started = Object.values(ctx.players).filter((p) => p.role === 'player').map((p) => p.id);
     return {
       phase: mkPhase('intro', ctx.now(), sec(ctx, 8)), round: 1, scores: {}, stage: 1, qIndex: 0,
-      plan: { s1: all.slice(0, 6), s2: all.slice(6, 12), s3: all.slice(12) },
+      plan: { s1: all.slice(0, s1Count), s2: all.slice(s1Count, s1Count + s2Count), s3: all.slice(s1Count + s2Count) },
       started, alive: started, finalists: [], answers: {}, totalMs: {}, gain: {}, frozen: [], predictions: {}, finalPoints: {},
       lastWinner: null, lastWatch: {}, cut: null, champion: null,
-      keep1: ctx.config.keep1, keep2: ctx.config.keep2, finalistCount: ctx.config.finalists,
+      keep1: ctx.config.keep1, keep2: ctx.config.keep2, finalistCount: ctx.config.finalists, target,
     };
   },
   rank(s, ctx) {

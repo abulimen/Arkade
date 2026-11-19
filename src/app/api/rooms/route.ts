@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   const m = getManager();
   if (!m.createLimiter.allow(ipOf(req))) return json({ error: 'RATE_LIMITED' }, 429);
-  const body = await readJson(req, CreateRoomSchema);
+  const body = await readJson(req, CreateRoomSchema, 512 * 1024);
   if ('error' in body) return body.error;
   const { gameId } = body.data;
   const config = body.data.config as GameConfig;

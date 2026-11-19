@@ -19,6 +19,7 @@ export function useCues(view: View | null, enabled: boolean) {
     const accusedWolf = ph === 'accuse' && Array.isArray(view.data?.accused) && view.data.accused.some((a: { wolf: boolean }) => a.wolf);
     // The final results show and the round leaderboard reveal drive their own staged audio.
     if (ph === 'end') return;
+    else if (p.phase === 'countdown' && !(view.gameId === 'spot-the-wolf' && ph === 'reveal')) play('go');
     else if (ph.endsWith('cut')) { play('shofar'); setTimeout(() => play('whoosh'), 900); }
     else if (accusedWolf) play('howl');
     else if (view.top5?.length) return;
@@ -26,10 +27,12 @@ export function useCues(view: View | null, enabled: boolean) {
   }, [view, enabled]);
 
   const { secs } = useCountdown(view?.endsAt ?? null, view?.pausedMs ?? null);
-  const lead = view && ['prompt', 'intro', 'reveal'].includes(view.phase);
+  const isCountdown = view?.phase === 'countdown';
+  const lead = Boolean(view && ['countdown', 'prompt', 'intro', 'reveal'].includes(view.phase));
   useEffect(() => {
     if (!enabled || !view || view.pausedMs != null || view.endsAt == null) return;
     if (lead && secs >= 1 && secs <= 3) play('beep');
+    else if (isCountdown && secs >= 4) play('tick');
     else if (secs >= 1 && secs <= 5) play('tick');
   }, [secs]); // eslint-disable-line react-hooks/exhaustive-deps
 }

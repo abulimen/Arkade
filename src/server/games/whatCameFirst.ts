@@ -3,7 +3,7 @@ import type { Difficulty } from '@/shared/types';
 import { END, activeIds, fail, isPlayer, mkPhase, ok, sec } from '../engine/kit';
 import type { GameCtx, GameModule, GameStateBase, ModView } from '../engine/kit';
 import { scoreOrder } from '../engine/scoring';
-import { diffsFor, pickPlan } from '../content';
+import { diffsFor, pickPlan, scaleLadder } from '../content';
 
 const LADDER: Difficulty[] = ['easy', 'easy', 'medium', 'medium', 'medium', 'hard', 'hard', 'hard'];
 
@@ -43,7 +43,7 @@ function toReveal(s: State, ctx: GameCtx): State {
 
 function advance(s: State, ctx: GameCtx): State {
   switch (s.phase.name) {
-    case 'prompt': return { ...s, phase: mkPhase('order', ctx.now(), sec(ctx, 40)) };
+    case 'prompt': return { ...s, phase: mkPhase('order', ctx.now(), sec(ctx, ctx.config.orderSec ?? 40)) };
     case 'order': return toReveal(s, ctx);
     case 'reveal': return s.round < s.rounds ? startRound(s, ctx, s.round + 1) : { ...s, phase: mkPhase(END, ctx.now(), null) };
     default: return s;
@@ -61,7 +61,12 @@ const base = (s: State): Pick<ModView, 'round' | 'rounds'> => ({ round: s.round,
 export const whatCameFirst: GameModule<State> = {
   id: 'what-came-first',
   createState(ctx) {
-    const plan = pickPlan(ctx.content.wcf, diffsFor(ctx.config, LADDER), ctx.config.audience, ctx.rng);
+    const ladder = scaleLadder(LADDER, ctx.config.rounds ?? null);
+    const plan = pickPlan(ctx.content.wcf, diffsFor(ctx.config, ladder), ctx.config.audience, ctx.rng, {
+      testament: ctx.config.testament,
+      custom: ctx.config.customQuestions?.wcf,
+      customMode: ctx.config.customMode,
+    });
     const s: State = { phase: mkPhase('prompt', ctx.now(), 0), round: 1, rounds: plan.length, plan, shown: [], locks: {}, roundScores: {}, perfect: 0, scores: {} };
     return startRound(s, ctx, 1);
   },
