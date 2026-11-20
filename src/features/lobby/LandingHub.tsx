@@ -470,11 +470,11 @@ export function LandingHub() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-12 lg:items-center">
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-6 min-w-0">
               <GameExplainerVideo gameId={selectedGame} />
             </div>
 
-            <div className="lg:col-span-6 double-bezel">
+            <div className="lg:col-span-6 min-w-0 double-bezel">
               <div className="double-bezel-inner relative overflow-hidden p-5 sm:p-7 space-y-5">
                 <div
                   aria-hidden="true"

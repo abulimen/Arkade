@@ -152,11 +152,11 @@ export function GameStorePage({ gameId }: { gameId: GameId }) {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
-            <div className="lg:col-span-7">
+            <div className="lg:col-span-7 min-w-0">
               <GameExplainerVideo gameId={gameId} />
             </div>
 
-            <div className="lg:col-span-5 double-bezel">
+            <div className="lg:col-span-5 min-w-0 double-bezel">
               <div className="double-bezel-inner p-5 sm:p-6 space-y-5">
                 <h3 className="text-lg font-bold text-white">3 Easy Steps</h3>
 

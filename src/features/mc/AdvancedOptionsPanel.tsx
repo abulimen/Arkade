@@ -165,7 +165,7 @@ export default function AdvancedOptionsPanel({
   return (
     <div className="rounded-2xl border border-white/12 bg-night-3/65 overflow-hidden">
       {/* Collapsible Header Bar (no nested interactive controls) */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-night-2/70">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 px-3.5 sm:px-4 py-3 bg-night-2/70">
         <button
           type="button"
           aria-expanded={open}
@@ -175,7 +175,7 @@ export default function AdvancedOptionsPanel({
             haptic('tick');
             setOpen((v) => !v);
           }}
-          className="cursor-pointer flex-1 min-h-10 flex items-center gap-3 text-left group"
+          className="cursor-pointer w-full sm:flex-1 min-w-0 min-h-10 flex items-center gap-3 text-left group"
         >
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/12 bg-night-3 text-gold">
             <Icon n="sliders" size={15} />
@@ -211,14 +211,15 @@ export default function AdvancedOptionsPanel({
           />
         </button>
 
-        <button
-          type="button"
-          disabled={overrideCount === 0}
-          onClick={onResetDefaults}
-          className="cursor-pointer rounded-full border border-white/15 bg-night-3 px-3.5 min-h-9 text-xs font-bold text-cloud hover:text-white hover:border-white/30 transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Reset Defaults
-        </button>
+        {overrideCount > 0 && (
+          <button
+            type="button"
+            onClick={onResetDefaults}
+            className="cursor-pointer self-end sm:self-auto rounded-full border border-white/15 bg-night-3 px-3.5 min-h-9 text-xs font-bold text-cloud hover:text-white hover:border-white/30 transition-colors shrink-0"
+          >
+            Reset Defaults
+          </button>
+        )}
       </div>
 
       {open && (
@@ -722,7 +723,7 @@ function CsvUploaderSection({
   return (
     <section aria-labelledby="adv-csv-heading" className="space-y-4 border-t border-white/10 pt-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
+        <div className="space-y-1 min-w-0 flex-1">
           <h3 id="adv-csv-heading" className="text-xs font-bold uppercase tracking-widest text-gold">
             Custom Questions (CSV Upload) — {meta.name}
           </h3>
@@ -949,7 +950,7 @@ export function SegGroup<T extends string>({
   disabled?: boolean;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 min-w-0">
       <div className="text-xs font-bold uppercase tracking-widest text-slate">{label}</div>
       <div className="flex flex-wrap gap-1.5 rounded-2xl border border-white/10 bg-night-3/80 p-1.5">
         {options.map(([v, text]) => {
@@ -961,7 +962,7 @@ export function SegGroup<T extends string>({
               disabled={disabled}
               aria-pressed={active}
               onClick={() => onChange(v)}
-              className={`cursor-pointer flex-1 min-h-10 rounded-xl px-3 py-1.5 text-xs font-bold transition-all disabled:opacity-45 disabled:cursor-not-allowed ${
+              className={`cursor-pointer flex-1 min-h-10 rounded-xl px-2.5 sm:px-3 py-1.5 text-xs font-bold transition-all disabled:opacity-45 disabled:cursor-not-allowed ${
                 active
                   ? 'bg-gold text-night shadow-[0_4px_14px_-2px_rgba(255,208,38,0.45)]'
                   : 'text-cloud hover:bg-white/8 hover:text-white'

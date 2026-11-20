@@ -40,7 +40,7 @@ function GameExplainerPlayer({ gameId }: { gameId: GameId }) {
     <div className="double-bezel">
       <div className="double-bezel-inner overflow-hidden p-4 sm:p-5 space-y-4">
         {/* Top Video Bar */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-abyss px-3 py-1 text-[11px] font-bold text-white">
             <span
               className="h-2 w-2 rounded-full"
@@ -56,7 +56,7 @@ function GameExplainerPlayer({ gameId }: { gameId: GameId }) {
             type="button"
             onClick={startOrToggle}
             aria-label={playing ? 'Pause guide animation' : 'Play guide animation'}
-            className="cursor-pointer press inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-night-3 px-3 py-1 text-xs font-semibold text-cloud hover:text-white"
+            className="cursor-pointer press inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-night-3 px-3 py-1.5 min-h-9 text-xs font-semibold text-cloud hover:text-white"
           >
             <Icon n={playing ? 'pause' : 'play'} size={12} />
             <span>{playing ? 'Pause' : 'Play'}</span>
@@ -65,17 +65,17 @@ function GameExplainerPlayer({ gameId }: { gameId: GameId }) {
 
         {/* Animated Stage Viewport */}
         <div
-          className="relative aspect-[16/10] sm:aspect-video w-full overflow-hidden rounded-2xl border border-white/12 bg-abyss p-3.5 sm:p-5 flex flex-col justify-between"
+          className="relative min-h-[290px] sm:min-h-0 sm:aspect-video w-full overflow-hidden rounded-2xl border border-white/12 bg-abyss p-3 sm:p-5 flex flex-col justify-between"
           style={{
             backgroundImage: `radial-gradient(circle at 50% 0%, ${spec.accent}26 0%, transparent 68%)`,
           }}
         >
-          <div key={`${gameId}-${scene}`} className="relative z-10 flex-1 flex items-center justify-center a-fade">
+          <div key={`${gameId}-${scene}`} className="relative z-10 flex-1 flex items-center justify-center py-1 a-fade">
             {renderScene(gameId, scene)}
           </div>
 
           {/* Short 1-Line Caption */}
-          <div className="relative z-10 mt-3 rounded-xl border border-white/10 bg-night/90 px-3.5 py-2 text-center text-xs sm:text-sm font-semibold text-white">
+          <div className="relative z-10 mt-3 rounded-xl border border-white/10 bg-night/90 px-3 sm:px-3.5 py-2 text-center text-xs sm:text-sm font-semibold text-white leading-snug">
             {spec.steps[scene]}
           </div>
 
@@ -85,7 +85,7 @@ function GameExplainerPlayer({ gameId }: { gameId: GameId }) {
               type="button"
               onClick={startOrToggle}
               aria-label="Watch how to play"
-              className="cursor-pointer group absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-abyss/60 backdrop-blur-[2px] transition hover:bg-abyss/50"
+              className="cursor-pointer group absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 px-4 bg-abyss/60 backdrop-blur-[2px] transition hover:bg-abyss/50"
             >
               <span className="relative grid h-16 w-16 sm:h-20 sm:w-20 place-items-center rounded-full border border-white/30 bg-night/90 text-white shadow-[0_18px_50px_-10px_rgba(0,0,0,0.9)] transition-transform group-hover:scale-110">
                 <span
@@ -96,7 +96,7 @@ function GameExplainerPlayer({ gameId }: { gameId: GameId }) {
                 <Icon n="play" size={28} className="relative translate-x-0.5 text-white" />
               </span>
               <span
-                className="rounded-full border border-white/20 bg-night/90 px-4 py-1.5 text-xs sm:text-sm font-bold text-white shadow-lg"
+                className="rounded-full border border-white/20 bg-night/90 px-4 py-1.5 text-xs sm:text-sm font-bold text-white shadow-lg text-center"
                 style={{ boxShadow: `0 0 24px -6px ${spec.accent}` }}
               >
                 Tap Play to Watch How It Works
@@ -106,7 +106,7 @@ function GameExplainerPlayer({ gameId }: { gameId: GameId }) {
         </div>
 
         {/* 3 Clickable Scene Tabs */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {spec.sceneLabels.map((label, idx) => {
             const active = idx === scene;
             return (
@@ -118,14 +118,14 @@ function GameExplainerPlayer({ gameId }: { gameId: GameId }) {
                   haptic('tick');
                   setScene(idx);
                 }}
-                className={`cursor-pointer relative overflow-hidden rounded-xl border px-3 py-2 text-left transition ${
+                className={`cursor-pointer relative overflow-hidden rounded-xl border px-3 py-2.5 sm:py-2 min-h-10 text-left transition ${
                   active
                     ? 'border-white/35 bg-white/10 text-white'
                     : 'border-white/10 bg-abyss/80 text-cloud/65 hover:text-white'
                 }`}
               >
-                <div className="flex items-center justify-between gap-1 text-xs font-bold truncate">
-                  <span className="truncate">{label}</span>
+                <div className="flex items-center justify-between gap-2 text-xs font-bold">
+                  <span className="leading-snug sm:truncate">{label}</span>
                   {active && playing && !reduced && (
                     <span
                       className="h-1.5 w-1.5 shrink-0 rounded-full animate-pulse"
@@ -168,7 +168,7 @@ function renderScene(gameId: GameId, scene: number) {
 function WolfScene({ scene }: { scene: number }) {
   if (scene === 0) {
     return (
-      <div className="grid grid-cols-3 gap-2.5 sm:gap-4 w-full max-w-lg items-stretch">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 w-full max-w-lg items-stretch">
         {[
           { who: 'Sam', wolf: false, card: "Noah's Ark" },
           { who: 'Mia', wolf: false, card: "Noah's Ark" },
@@ -176,21 +176,26 @@ function WolfScene({ scene }: { scene: number }) {
         ].map((p, i) => (
           <div
             key={p.who}
-            className={`rounded-2xl border p-2.5 sm:p-3 text-center flex flex-col items-center justify-between gap-2 ${
+            className={`rounded-2xl border p-2.5 sm:p-3 text-left sm:text-center flex flex-row sm:flex-col items-center justify-between gap-2.5 sm:gap-2 ${
               p.wolf
                 ? 'border-coral/60 bg-coral/15 shadow-[0_0_24px_rgba(255,92,108,0.28)] a-pop'
                 : 'border-leaf/40 bg-leaf/10 a-slide'
             }`}
             style={{ animationDelay: `${i * 120}ms` }}
           >
-            <span className="text-[11px] font-bold text-cloud/85">{p.who}</span>
-            <div className="rounded-xl bg-night/90 border border-white/10 px-2 py-2.5 w-full">
+            <div className="flex sm:flex-col items-center gap-2 sm:gap-0.5 shrink-0">
+              <span className="text-xs sm:text-[11px] font-bold text-white sm:text-cloud/85">{p.who}</span>
+              <span className="text-[10px] font-semibold text-cloud/75 sm:hidden">
+                {p.wolf ? '· Wolf' : '· Sheep'}
+              </span>
+            </div>
+            <div className="rounded-xl bg-night/90 border border-white/10 px-2.5 py-2 sm:px-2 sm:py-2.5 flex-1 sm:w-full text-center">
               <div className={`text-[10px] font-bold uppercase ${p.wolf ? 'text-coral' : 'text-leaf'}`}>
                 {p.wolf ? 'YOU ARE WOLF' : 'SECRET WORD'}
               </div>
               <div className="text-xs sm:text-sm font-bold text-white mt-0.5">{p.card}</div>
             </div>
-            <span className="text-[10px] font-semibold text-cloud/75">
+            <span className="hidden sm:inline text-[10px] font-semibold text-cloud/75">
               {p.wolf ? 'Listen & play along!' : 'Sheep'}
             </span>
           </div>
@@ -202,7 +207,7 @@ function WolfScene({ scene }: { scene: number }) {
   if (scene === 1) {
     return (
       <div className="flex flex-col items-center gap-3 w-full max-w-lg">
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-4 w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 w-full">
           {[
             { name: 'Sam', clue: '"Big Boat!"', delay: '0ms', wolf: false },
             { name: 'Mia', clue: '"Animals!"', delay: '200ms', wolf: false },
@@ -210,11 +215,11 @@ function WolfScene({ scene }: { scene: number }) {
           ].map((c) => (
             <div
               key={c.name}
-              className="flex flex-col items-center gap-2 a-pop"
+              className="flex flex-row-reverse sm:flex-col items-center justify-between gap-2 a-pop"
               style={{ animationDelay: c.delay }}
             >
               <div
-                className={`rounded-2xl border px-3 py-2 text-xs sm:text-sm font-bold shadow-lg ${
+                className={`rounded-2xl border px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold shadow-lg text-center ${
                   c.wolf
                     ? 'border-coral/60 bg-coral/20 text-white'
                     : 'border-gold/50 bg-gold/15 text-gold'
@@ -222,13 +227,13 @@ function WolfScene({ scene }: { scene: number }) {
               >
                 {c.clue}
               </div>
-              <div className="rounded-full border border-white/15 bg-night-2 px-3 py-1 text-xs font-bold text-white">
+              <div className="rounded-full border border-white/15 bg-night-2 px-3 py-1 text-xs font-bold text-white shrink-0">
                 {c.name}
               </div>
             </div>
           ))}
         </div>
-        <span className="rounded-full border border-white/15 bg-night-2 px-3 py-1 text-[11px] font-semibold text-gold">
+        <span className="rounded-full border border-white/15 bg-night-2 px-3 py-1 text-[11px] font-semibold text-gold text-center">
           Leo has NO word, so he listens to clues and guesses!
         </span>
       </div>
@@ -366,17 +371,20 @@ function OrderScene({ scene }: { scene: number }) {
 
   return (
     <div className="flex flex-col items-center gap-2.5 w-full max-w-lg a-pop">
-      <div className="grid grid-cols-5 gap-1.5 w-full">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-1.5 w-full">
         {fiveStories.map((c) => (
-          <div key={c.title} className="rounded-xl border border-leaf/60 bg-leaf/15 p-2 text-center space-y-1">
-            <span className="inline-grid h-6 w-6 place-items-center rounded-full bg-leaf text-night text-xs font-extrabold">
+          <div
+            key={c.title}
+            className="rounded-xl border border-leaf/60 bg-leaf/15 p-2 flex sm:flex-col items-center sm:justify-center gap-2 sm:gap-1 text-left sm:text-center last:col-span-2 sm:last:col-span-1 last:justify-center"
+          >
+            <span className="inline-grid h-6 w-6 shrink-0 place-items-center rounded-full bg-leaf text-night text-xs font-extrabold">
               {c.order}
             </span>
-            <div className="text-[10px] sm:text-[11px] font-bold text-white leading-tight">{c.title}</div>
+            <div className="text-xs sm:text-[11px] font-bold text-white leading-tight">{c.title}</div>
           </div>
         ))}
       </div>
-      <span className="rounded-full bg-leaf px-3.5 py-1 text-xs font-extrabold text-night shadow">
+      <span className="rounded-full bg-leaf px-3.5 py-1 text-xs font-extrabold text-night shadow text-center">
         All 5 in Order = 800 pts + up to 200 Speed Bonus!
       </span>
     </div>
@@ -441,11 +449,11 @@ function GideonsScene({ scene }: { scene: number }) {
 function WhoAmIScene({ scene }: { scene: number }) {
   if (scene === 0) {
     return (
-      <div className="flex items-center gap-4 w-full max-w-md justify-center a-pop">
-        <div className="h-24 w-20 rounded-2xl border border-violet/60 bg-violet/20 grid place-items-center text-3xl font-extrabold text-white">
+      <div className="flex items-center gap-3 sm:gap-4 w-full max-w-md justify-center a-pop">
+        <div className="h-20 w-16 sm:h-24 sm:w-20 shrink-0 rounded-2xl border border-violet/60 bg-violet/20 grid place-items-center text-3xl font-extrabold text-white">
           ?
         </div>
-        <div className="rounded-2xl border border-white/15 bg-night-2 p-3.5 space-y-1.5 flex-1">
+        <div className="rounded-2xl border border-white/15 bg-night-2 p-3 sm:p-3.5 space-y-1.5 flex-1 min-w-0">
           <span className="inline-block rounded-full bg-gold px-2.5 py-0.5 text-[10px] font-extrabold text-night">
             500 PTS
           </span>

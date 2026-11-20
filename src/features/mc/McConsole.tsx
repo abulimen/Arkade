@@ -207,18 +207,18 @@ export default function McConsole({ code }: { code: string }) {
 
       <div className="space-y-4">
         {/* Top Console Telemetry Strip */}
-        <header className="glass-hud rounded-3xl p-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl border border-gold/40 bg-gold/15 px-3.5 py-1.5 text-center">
+        <header className="glass-hud rounded-3xl p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="shrink-0 rounded-2xl border border-gold/40 bg-gold/15 px-3.5 py-1.5 text-center">
               <div className="text-[10px] font-bold uppercase tracking-widest text-gold">Room</div>
               <div className="font-bold text-white tracking-[0.22em] text-lg leading-none">{code}</div>
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-semibold text-white text-base sm:text-lg leading-tight">{meta.name}</h1>
                 <ConnectionPill conn={ch.conn} />
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-slate mt-0.5 tabular-nums">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate mt-0.5 tabular-nums">
                 <span>
                   <strong className="text-leaf">{info.diag.connected}</strong> online · {info.diag.away} away · {view.count.total} total
                 </span>
@@ -232,8 +232,8 @@ export default function McConsole({ code }: { code: string }) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" small onClick={copyLink}>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button variant="ghost" small className="w-full sm:w-auto" onClick={copyLink}>
               <Icon n="share" size={16} />
               <span>Copy Link</span>
             </Button>
@@ -276,11 +276,11 @@ export default function McConsole({ code }: { code: string }) {
         {/* Main Split Broadcast Deck */}
         <div className="grid gap-5 lg:grid-cols-[1.15fr_0.95fr] items-start">
           {/* Director Column */}
-          <div className={`space-y-4 ${tab !== 'controls' ? 'hidden lg:block' : ''}`}>
+          <div className={`min-w-0 space-y-4 ${tab !== 'controls' ? 'hidden lg:block' : ''}`}>
             {/* Active Phase & Host Teleprompter */}
-            <section className="arcade-panel p-5 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <PhaseBanner>
+            <section className="arcade-panel p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <PhaseBanner className="px-4 py-2 text-base sm:text-lg max-w-full">
                   {view.status === 'lobby'
                     ? 'Lobby Staging'
                     : view.status === 'paused'
@@ -293,7 +293,7 @@ export default function McConsole({ code }: { code: string }) {
               </div>
 
               {/* Host Teleprompter */}
-              <div className="rounded-2xl border border-leaf/30 bg-night-3/90 p-4 space-y-1">
+              <div className="rounded-2xl border border-leaf/30 bg-night-3/90 p-3.5 sm:p-4 space-y-1">
                 <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-leaf">
                   <Icon n="info" size={13} /> Host Teleprompter
                 </div>
@@ -303,9 +303,9 @@ export default function McConsole({ code }: { code: string }) {
               {/* Lobby Join QR & Stage Picker */}
               {view.status === 'lobby' && (
                 <div className="space-y-4 pt-1">
-                  <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-night-3/70 p-4">
+                  <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl border border-white/10 bg-night-3/70 p-4 text-center sm:text-left">
                     <QRPanel url={joinUrl} size={110} />
-                    <div className="min-w-0 flex-1 space-y-2">
+                    <div className="min-w-0 flex-1 space-y-2 w-full">
                       <div className="text-xs font-bold uppercase tracking-widest text-slate">Quick Join URL</div>
                       <div className="font-mono text-sm font-bold text-gold break-all">{shortUrl}</div>
                       <p className="text-xs text-slate">
@@ -375,37 +375,37 @@ export default function McConsole({ code }: { code: string }) {
 
               {/* Transport Deck */}
               {view.status !== 'lobby' && (
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-white/10">
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 pt-2 border-t border-white/10">
                   {view.status === 'paused' ? (
-                    <Button variant="primary" small onClick={() => run('RESUME')}>
+                    <Button variant="primary" small className="px-3 sm:px-5" onClick={() => run('RESUME')}>
                       <Icon n="play" size={16} /> <span>{t('mc.resume')}</span>
                     </Button>
                   ) : view.status === 'playing' ? (
-                    <Button variant="secondary" small onClick={() => run('PAUSE')}>
+                    <Button variant="secondary" small className="px-3 sm:px-5" onClick={() => run('PAUSE')}>
                       <Icon n="pause" size={16} /> <span>Pause</span>
                     </Button>
                   ) : null}
 
                   {view.status === 'playing' && (
-                    <Button variant="ghost" small onClick={() => run('ADD_TIME', { seconds: 15 })}>
+                    <Button variant="ghost" small className="px-3 sm:px-5" onClick={() => run('ADD_TIME', { seconds: 15 })}>
                       <Icon n="plus" size={16} /> <span>+15s</span>
                     </Button>
                   )}
 
                   {(view.status === 'playing' || (isCountdown && view.status === 'paused')) && (
-                    <Button variant="ghost" small onClick={() => run('SKIP')}>
+                    <Button variant="ghost" small className="px-3 sm:px-5" onClick={() => run('SKIP')}>
                       <Icon n="skip" size={16} /> <span>Skip</span>
                     </Button>
                   )}
 
                   {info.controls.includes('next') && (
-                    <Button variant="primary" small onClick={() => run('NEXT')}>
+                    <Button variant="primary" small className="px-3 sm:px-5" onClick={() => run('NEXT')}>
                       <Icon n="arrowRight" size={16} /> <span>Next</span>
                     </Button>
                   )}
 
                   {info.controls.includes('reask') && (
-                    <Button variant="secondary" small onClick={() => run('REASK')}>
+                    <Button variant="secondary" small className="px-3 sm:px-5" onClick={() => run('REASK')}>
                       <Icon n="dice" size={16} /> <span>Re-ask</span>
                     </Button>
                   )}
@@ -414,6 +414,7 @@ export default function McConsole({ code }: { code: string }) {
                     <Button
                       variant="danger"
                       small
+                      className="px-3 sm:px-5"
                       onClick={() => setConfirmAction({ kind: 'END', label: 'End current game and reveal podium?' })}
                     >
                       <Icon n="stop" size={16} /> <span>End Game</span>
@@ -423,6 +424,7 @@ export default function McConsole({ code }: { code: string }) {
                   <Button
                     variant="ghost"
                     small
+                    className="px-3 sm:px-5"
                     onClick={() => setConfirmAction({ kind: 'CLOSE', label: 'Close this room for all players and projectors?' })}
                   >
                     <Icon n="cross" size={16} /> <span>Close Room</span>
@@ -432,7 +434,7 @@ export default function McConsole({ code }: { code: string }) {
             </section>
 
             {/* Projector Sound Console */}
-            <section className="arcade-card p-5">
+            <section className="arcade-card p-4 sm:p-5">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky">
@@ -467,12 +469,12 @@ export default function McConsole({ code }: { code: string }) {
           </div>
 
           {/* Right Column: Live 16:9 Stage Preview + Player Roster */}
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <div className={`space-y-2 ${tab !== 'preview' ? 'hidden lg:block' : ''}`}>
-              <div className="flex items-center justify-between px-1">
+              <div className="flex items-center justify-between gap-2 px-1">
                 <span className="text-xs font-bold uppercase tracking-widest text-slate">Live Projector Mirror</span>
-                <a href={`/screen/${code}`} target="_blank" rel="noreferrer" className="hidden lg:inline text-xs font-semibold text-sky hover:underline">
-                  Open Fullscreen
+                <a href={`/screen/${code}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-sky hover:underline shrink-0">
+                  <span>Open Fullscreen</span>
                 </a>
               </div>
               <div className="aspect-video w-full overflow-hidden rounded-3xl border border-white/15 bg-night shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]">
@@ -518,7 +520,7 @@ export default function McConsole({ code }: { code: string }) {
               </section>
             )}
 
-            <section className={`arcade-card p-5 space-y-3 ${tab !== 'players' ? 'hidden lg:block' : ''}`}>
+            <section className={`arcade-card p-4 sm:p-5 space-y-3 ${tab !== 'players' ? 'hidden lg:block' : ''}`}>
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-bold uppercase tracking-widest text-slate">
                   Passengers ({info.players.length})

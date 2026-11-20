@@ -269,7 +269,7 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
                   type="button"
                   onClick={() => pickGame(id)}
                   aria-pressed={selected}
-                  className={`cursor-pointer press console-sheen snap-center shrink-0 w-[230px] lg:w-auto relative overflow-hidden rounded-[26px] p-4 text-left transition-all flex flex-col justify-between min-h-[250px] border ${
+                  className={`cursor-pointer press console-sheen snap-start sm:snap-center shrink-0 w-[210px] sm:w-[230px] lg:w-auto relative overflow-hidden rounded-[26px] p-4 text-left transition-all flex flex-col justify-between min-h-[250px] border ${
                     selected
                       ? 'border-white ring-2 ring-gold/80 shadow-[0_22px_45px_-12px_rgba(0,0,0,0.85)] -translate-y-1'
                       : 'border-white/15 opacity-80 hover:opacity-100 hover:-translate-y-0.5'
@@ -315,13 +315,13 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
 
         {/* Hardware Config Deck */}
         <div className="double-bezel">
-          <section className="double-bezel-inner p-5 sm:p-7 grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
-          <div className="space-y-5">
+          <section className="double-bezel-inner p-4 sm:p-7 grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
+          <div className="space-y-5 min-w-0">
             <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/12 bg-night-3 text-gold">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/12 bg-night-3 text-gold">
                 <Icon n="sliders" size={18} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h2 className="font-semibold text-white fs-h3">{t('mc.settings')}</h2>
                 <p className="text-xs text-slate">{meta.name} — {meta.tagline}</p>
               </div>
@@ -428,7 +428,7 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
           </div>
 
           {/* Right Launch Cartridge */}
-          <div className="rounded-3xl border border-white/12 bg-night-3/80 p-5 flex flex-col justify-between gap-5 relative overflow-hidden">
+          <div className="min-w-0 rounded-3xl border border-white/12 bg-night-3/80 p-4 sm:p-5 flex flex-col justify-between gap-5 relative overflow-hidden">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -bottom-16 -right-16 h-48 w-48 rounded-full opacity-25 blur-3xl"
@@ -513,13 +513,13 @@ export default function McHome({ initialGame = 'spot-the-wolf' }: { initialGame?
                       }}
                       className="cursor-pointer w-full flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/5 transition"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="rounded-lg border border-gold/35 bg-gold/12 px-2.5 py-1 font-mono text-xs font-bold text-gold">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="shrink-0 rounded-lg border border-gold/35 bg-gold/12 px-2.5 py-1 font-mono text-xs font-bold text-gold">
                           {item.code}
                         </span>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="font-semibold text-white text-sm truncate">{item.gameName}</div>
-                          <div className="text-[11px] text-slate">
+                          <div className="text-[11px] text-slate truncate">
                             {new Date(item.endedAt).toLocaleString()} · {item.playerCount} players · {item.audience}
                           </div>
                         </div>
