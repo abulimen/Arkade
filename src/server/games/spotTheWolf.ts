@@ -275,7 +275,8 @@ export const spotTheWolf: GameModule<State> = {
       if (!text) return fail(s, 'EMPTY');
       if (isBlocked(text)) return fail(s, 'AGAIN');
       if (late) return fail(s, 'LATE');
-      const next = { ...s, guesses: { ...s.guesses, [pid]: text }, guessOk: { ...s.guessOk, [pid]: guessMatches(text, s.word.word, s.word.aliases) } };
+      const okGuess = guessMatches(text, s.word.word, s.word.aliases) || a.payload?.aiApproved === true;
+      const next = { ...s, guesses: { ...s.guesses, [pid]: text }, guessOk: { ...s.guessOk, [pid]: okGuess } };
       return ok(s.caught.every((id) => next.guesses[id] !== undefined) ? toRoundEnd(next, ctx) : next);
     }
     return a.by === 'player' ? fail(s, 'PHASE') : ok(s);
