@@ -1,5 +1,5 @@
 const DECISIONS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/decisions';
-const DEFAULT_TIMEOUT_MS = 4000;
+const DEFAULT_TIMEOUT_MS = 6000;
 
 export interface WolfGuessDecisionInput {
   guess: string;
@@ -60,7 +60,7 @@ export async function decideWolfGuessMatch({
           matches_secret_word: {
             type: 'noul',
             instructions:
-              'Does player_guess refer to the same biblical person, place, object, or concept as secret_word (or accepted_aliases) within category? Answer yes if the guess clearly shows the player knows the exact secret word despite spelling mistakes, spacing, plurals, abbreviations, or well-known equivalent titles. Answer no for broader category guesses, related-but-different Bible terms, or unrelated words.',
+              'Does player_guess refer to the same biblical person, place, object, or concept as secret_word (or accepted_aliases)? Answer yes if it clearly shows the player knows the exact secret word despite spelling mistakes, spacing, plurals, or well-known equivalent phrasing. Answer no if it is only a vague category guess or a different Bible person/story.',
           },
         },
       }),
@@ -74,7 +74,7 @@ export async function decideWolfGuessMatch({
       return false;
     }
     const confident = typeof answer.confidence === 'number' ? answer.confidence >= 0.55 : true;
-    return answer.noul >= 0.7 && confident;
+    return answer.noul >= 0.6 && confident;
   } catch {
     return false;
   }
